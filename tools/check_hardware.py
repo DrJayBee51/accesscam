@@ -25,11 +25,20 @@ def main() -> int:
         return 0
 
     failures = []
+    empty = []
     for part in part_dirs:
         extensions = {f.suffix.lower() for f in part.rglob("*") if f.is_file()}
+        if not extensions:
+            # Git cannot track empty directories, so these never reach CI.
+            # Treat them as work in progress rather than an error.
+            empty.append(part.name)
+            continue
         missing = [label for label, exts in REQUIRED.items() if not extensions & exts]
         if missing:
             failures.append((part.name, missing))
+
+    for name in empty:
+        print(f"Note: {name}/ is empty (work in progress, not tracked by git).")
 
     if failures:
         print("Incomplete part folders in hardware/:\n")
@@ -40,7 +49,8 @@ def main() -> int:
         print("\nEach part folder must contain a SolidWorks source, an STL, and a STEP file.")
         return 1
 
-    print(f"OK: {len(part_dirs)} part folder(s) complete.")
+    complete = len(part_dirs) - len(empty)
+    print(f"OK: {complete} part folder(s) complete.")
     return 0
 
 
