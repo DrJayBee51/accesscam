@@ -1,0 +1,62 @@
+# Hardware Notes
+
+## Camera: Arducam 1080P Day & Night Vision USB (Amazon B0829HZ3Q7, module B0205)
+
+| Spec | Value | Relevance |
+|---|---|---|
+| Sensor | 1/2.7" OV2710 CMOS | IR-sensitive with the IR-cut filter out of the path |
+| Frame rates | MJPEG: 30fps at every resolution (640×480 → 1920×1080); YUY2 much slower | **Use MJPEG.** 640×480@30 is the sweet spot: full fps, least USB2 bandwidth/latency |
+| Illumination | 6× 850nm IR LEDs | Lights up the retroreflective dot; driven by the same photoresistor circuit as the IR-cut switch |
+| IR-cut filter | Mechanical, auto-switched by an onboard **photoresistor** | ⚠️ See below — must be forced to night mode |
+| Lens | 105° F1.6 "starlight" | Wide FOV means fewer pixels per degree of head motion; crop/ROI in software if needed |
+| Interface | USB 2.0 UVC | Driverless on Windows/Linux/macOS |
+
+## ⚠️ Critical: force night mode
+
+The board's photoresistor senses **ambient visible light**. In a normally lit
+room the camera sits in *day* mode: the IR-cut filter blocks 850nm and the IR
+LEDs are off — retroreflective tracking is impossible.
+
+**The 3D-printed housing must cover the photoresistor** (a small light-tight
+shroud or a blob of the enclosure over it) so the board always believes it is
+dark: filter stays out of the light path, IR LEDs stay on. Verify before
+finalizing the print: cover the photoresistor with a fingertip/tape and
+confirm the LEDs glow faintly red and the image goes IR (room lights on).
+
+## Housing / monitor mount — SolidWorks design requirements
+
+1. **Photoresistor shroud** — light-tight cover over the photoresistor only;
+   do not block the lens or the six IR LEDs.
+2. **Monitor-top mount** — SmartNav-style perch: rests on the top bezel with a
+   rear counterweight/clamp lip; fits bezels ~10–40mm deep.
+3. **Tilt adjustment** — ±20° pitch so the camera can aim at the user's
+   forehead from above the screen; friction hinge or notched detents.
+4. **Filter slot (optional but recommended)** — a slot in front of the lens
+   for an 850nm IR-pass filter (a cheap acrylic square, or the classic exposed
+   film / floppy-disk-magnetic-media stopgap). Blocks visible light so the dot
+   is nearly the only thing in frame.
+5. **Ventilation + strain relief** — small vents; route the USB pigtail so it
+   doesn't torque the board.
+6. **Board mounting** — the module is a bare 38×38mm-class PCB (measure the
+   actual board and hole spacing with calipers before modeling); standoffs for
+   M2 screws or snap posts.
+
+## Retroreflective marker
+
+- Material: **3M Scotchlite 7610** high-gain reflective tape (this is what
+  SmartNav dots were). eBay/Amazon sell small sheets cheaply.
+- Punch 8–12mm dots with a hole punch. Backing: adhesive on forehead sticker,
+  glasses frame, or hat brim — same spots SmartNav users already use.
+- Spare SmartNav dots also work as-is.
+
+## Validation checklist (before M1 exit)
+
+- [ ] Camera enumerates as UVC on Windows; MJPEG 640×480@30 confirmed with a
+      real fps counter (not the advertised number)
+- [ ] Photoresistor shrouded → IR LEDs on and filter open with room lights on
+- [ ] Exposure can be driven low enough (via OpenCV `CAP_PROP_EXPOSURE`) that
+      the dot is the brightest blob in frame in a daylight room
+- [ ] Dot tracked across the full comfortable head-motion range at seating
+      distance; note the pixel span (this calibrates default gains)
+- [ ] Jitter while holding still measured (pixel std-dev) — feeds smoothing
+      defaults
