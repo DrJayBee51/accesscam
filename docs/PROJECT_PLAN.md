@@ -60,10 +60,10 @@ Repo scaffolded, plan and hardware docs written, GitHub repo published.
 The two tracks meet at the end of M1: real tracking can't be validated until
 the camera is mounted and a reflective dot is worn.
 
-**Software:** camera bring-up script with live preview; verify actual fps and
-MJPEG mode; drive exposure down until the retroreflective dot is the only
-bright object; threshold + blob centroid overlay; log tracking jitter (px
-std-dev while holding still).
+**Software:** ✅ `tools/camera_bringup.py` built — live preview, measured fps,
+MJPEG/exposure control with clamp detection, threshold + sub-pixel blob
+centroid overlay, and travel-range and jitter measurement. Awaiting a mounted
+camera and marker to run against.
 **Hardware (SolidWorks):** monitor-top housing per `docs/HARDWARE.md` — must
 shroud the IR-cut photoresistor, allow tilt aiming, and optionally hold an
 IR-pass filter. Print, mount, and make a reflective dot (3M 7610 tape).

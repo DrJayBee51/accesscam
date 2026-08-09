@@ -20,6 +20,9 @@ htmlcov/
 .idea/
 *.swp
 
+# Bring-up snapshots
+bringup/
+
 # OS
 Thumbs.db
 .DS_Store

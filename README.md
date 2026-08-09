@@ -44,8 +44,24 @@ user-tunable gains, filtered for noise, and applied to the system cursor.
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
-python -m accesscam
 ```
+
+### Camera bring-up
+
+Before there's a UI, `tools/camera_bringup.py` validates the hardware and tunes
+tracking. It shows a live preview with the detected marker overlaid, and
+measures the two numbers that set the app's defaults: how far the dot travels
+across the sensor, and how much the tracked position jitters when you hold
+still.
+
+```powershell
+python tools/camera_bringup.py --list      # find your camera's index
+python tools/camera_bringup.py --device 0
+```
+
+Keys: `[` `]` adjust the brightness threshold, `-` `=` adjust exposure, `j`
+measures jitter, `r` resets the travel range, `s` saves a snapshot, `q` quits
+and prints a summary for the checklist in [docs/HARDWARE.md](docs/HARDWARE.md).
 
 ## License
 

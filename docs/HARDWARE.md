@@ -41,6 +41,22 @@ confirm the LEDs glow faintly red and the image goes IR (room lights on).
    actual board and hole spacing with calipers before modeling); standoffs for
    M2 screws or snap posts.
 
+## Windows capture backend
+
+OpenCV offers two Windows backends and they do not behave the same. Measured
+on a test camera (2026-08-08, OpenCV 5.0):
+
+| Backend | Exposure control | Notes |
+|---|---|---|
+| `CAP_DSHOW` (DirectShow) | Full range — accepted −10 | Currently the default on Windows |
+| `CAP_MSMF` (Media Foundation) | **Clamped** — requested −10, held at −6 | Also reports no usable FOURCC |
+
+Short exposure is what makes the marker the only bright object in a lit room,
+so a backend that clamps the range can make tracking impossible. The bring-up
+tool displays both the requested and driver-reported exposure so clamping is
+visible, and `--backend dshow|msmf` switches between them. Re-check this on
+the Arducam — the behaviour is driver-specific, not universal.
+
 ## Retroreflective marker
 
 - Material: **3M Scotchlite 7610** high-gain reflective tape (this is what
