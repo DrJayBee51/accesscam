@@ -41,6 +41,36 @@ confirm the LEDs glow faintly red and the image goes IR (room lights on).
    actual board and hole spacing with calipers before modeling); standoffs for
    M2 screws or snap posts.
 
+## Mount base provenance — why `MonitorMountBase` is in inches
+
+The original plan was to reuse the SmartNav's own monitor base. That was
+dropped: **the SmartNav stays connected and working** as a fallback while
+AccessCam is built (see the "user's daily driver breaks" risk in
+PROJECT_PLAN.md), so its base can't be cannibalised.
+
+`MonitorMountBase` is therefore a replica, traced from the only reference
+available — the original base's STL, which was authored in inches. The part is
+consequently modelled in **inches** (2.000 × 1.550 × 1.400in = 50.80 × 39.37 ×
+35.56mm, 0.150in walls) while every other part in `hardware/` is metric.
+
+**This is intentional, not a units bug.** The geometry is physically correct
+and its STEP declares `CONVERSION_BASED_UNIT('INCH')`, so FreeCAD/Fusion place
+it at the right size. Don't "fix" it by rescaling — that would break the fit
+against the real monitor. The production housing (M3) rebuilds this in MMGS.
+
+## Development prototype vs. production housing
+
+The current `CameraHousing` / `HousingBottom` / `MonitorMountBase` set is a
+**bring-up prototype**, not the shipping design. The camera slots in from above
+and is held by gravity — no fasteners, no captive retention, no tilt detents,
+and no fastened joint between the housing and the mount base. That is a
+deliberate trade: it gets a camera pointed at the user quickly and lets the
+board be pulled out freely while exposure, filtering, and aim are still being
+tuned. Requirements 2, 3 and 6 above are only partly met by it.
+
+Do not print this for daily use. The production revision is scheduled as the
+hardware track of **M3**, once development testing has settled the geometry.
+
 ## Windows capture backend
 
 OpenCV offers two Windows backends and they do not behave the same. Measured
