@@ -1,7 +1,12 @@
-"""Verify every part folder in hardware/ contains SolidWorks, STL, and STEP files.
+"""Verify every part folder in hardware/ carries its required exports.
+
+Part folders (a .sldprt source) must also contain an STL and a STEP file, so a
+contributor without SolidWorks can both print and modify the design. Assembly
+folders (a .sldasm source) only need the assembly itself - an assembly is a
+container of parts, not something you print as a single mesh.
 
 Usage: python tools/check_hardware.py
-Exits nonzero and lists what's missing if any part folder is incomplete.
+Exits nonzero and lists what's missing if anything is incomplete.
 """
 
 import sys
@@ -9,11 +14,24 @@ from pathlib import Path
 
 HARDWARE_DIR = Path(__file__).resolve().parent.parent / "hardware"
 
-REQUIRED = {
-    "SolidWorks source (.sldprt/.sldasm)": {".sldprt", ".sldasm"},
+PART_SOURCE = {".sldprt"}
+ASSEMBLY_SOURCE = {".sldasm"}
+
+PART_EXPORTS = {
     "STL export (.stl)": {".stl"},
     "STEP export (.step/.stp)": {".step", ".stp"},
 }
+
+
+def missing_from(extensions: set[str]) -> list[str]:
+    """Return the labels of required files absent from one part folder."""
+    if extensions & ASSEMBLY_SOURCE:
+        return []
+    if not extensions & PART_SOURCE:
+        return ["SolidWorks source (.sldprt/.sldasm)"] + [
+            label for label, exts in PART_EXPORTS.items() if not extensions & exts
+        ]
+    return [label for label, exts in PART_EXPORTS.items() if not extensions & exts]
 
 
 def main() -> int:
@@ -33,7 +51,7 @@ def main() -> int:
             # Treat them as work in progress rather than an error.
             empty.append(part.name)
             continue
-        missing = [label for label, exts in REQUIRED.items() if not extensions & exts]
+        missing = missing_from(extensions)
         if missing:
             failures.append((part.name, missing))
 
@@ -46,7 +64,7 @@ def main() -> int:
             print(f"  {name}/ is missing:")
             for label in missing:
                 print(f"    - {label}")
-        print("\nEach part folder must contain a SolidWorks source, an STL, and a STEP file.")
+        print("\nEach part folder needs a SolidWorks source; parts also need an STL and STEP.")
         return 1
 
     complete = len(part_dirs) - len(empty)

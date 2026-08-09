@@ -15,11 +15,15 @@ hardware/
 
 ## Rules
 
-Every part folder **must** contain all three of:
+Every **part** folder (a `.sldprt` source) must contain all three of:
 
-1. a SolidWorks source file (`.sldprt` or `.sldasm`)
+1. the SolidWorks source file (`.sldprt`)
 2. an `.stl` export (ready to slice)
 3. a `.step` export (so contributors without SolidWorks can modify the design)
+
+**Assembly** folders (a `.sldasm` source) need only the assembly file. An
+assembly is a container of parts rather than something you print as a single
+mesh, and each part it references already carries its own exports.
 
 CI enforces this: `python tools/check_hardware.py` runs on every push and
 fails if any part folder is incomplete. Run it locally before committing.
