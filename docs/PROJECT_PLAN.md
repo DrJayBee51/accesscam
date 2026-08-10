@@ -56,33 +56,43 @@ kept short and why a faster camera is the single best future upgrade.
 ### M0 — Project setup ✅ (2026-08-08)
 Repo scaffolded, plan and hardware docs written, GitHub repo published.
 
-### M1 — Tracking prototype (software) & mount (hardware, parallel)
-The two tracks meet at the end of M1: real tracking can't be validated until
-the camera is mounted and a reflective dot is worn.
+### M1 — Tracking prototype (software) & mount (hardware) ✅ (2026-08-10)
+The two tracks met as planned: real tracking could not be validated until the
+camera was mounted and a reflective dot worn.
 
 **Software:** ✅ `tools/camera_bringup.py` built — live preview, measured fps,
 MJPEG/exposure control with clamp detection, threshold + sub-pixel blob
 centroid overlay, and travel-range and jitter measurement.
 
-**First real run against the Arducam (2026-08-09):**
+**Bring-up runs:**
 
-| Measurement | Result | |
-|---|---|---|
-| Format / rate | 640×480 MJPG, **29.3fps** measured | ✅ |
-| Exposure | requested −7, driver held −7.0 (no clamp) | ✅ |
-| Photoresistor shroud | IR LEDs on in a lit room | ✅ |
-| Marker travel | x 68.7px, y 48.1px | ⚠️ low |
-| Jitter (stdev) | x 0.208px, y 0.195px | ✅ |
+| Run | Light | fps | Exposure | Travel x/y (px) | Jitter x/y (px) |
+|---|---|---|---|---|---|
+| 2026-08-09 22:46 | lamplight | 29.3 | −7 | 68.7 / 48.1 | 0.208 / 0.195 |
+| 2026-08-10 11:35 | daylight | 29.5 | −9 | 41.4 / 17.5 | 0.041 / 0.123 |
+| 2026-08-10 12:2x | daylight | 28.8 | −9 | 1.2 / 3.2 | — |
+| **2026-08-10 12:5x** | **daylight** | **29.3** | **−9** | **82.8 / 44.3** | **0.073 / 0.045** |
 
-Threshold 200 isolated the dot at only −7 exposure, leaving headroom down to
-−10 for brighter rooms. Two findings came out of the run: the Arducam
-enumerates as **index 1** alongside a second webcam, and a FOURCC ordering bug
-in `camera.py` was halving the frame rate (see HARDWARE.md).
+Read the last row as the trustworthy one. The two middle runs were corrupted by
+a tracking bug, not by lighting: `_select` chose the largest blob on
+acquisition, so a bright daylight object took the track and `max_jump` then
+defended it, leaving the marker permanently ineligible. Travel collapsed toward
+zero because the tracked object never moved. Fixed by filtering on shape and
+ranking on brightness — see the commit and HARDWARE.md.
 
-**Travel is the weak number.** Dividing travel by jitter gives ~330
-distinguishable horizontal positions and ~247 vertical — comfortable across a
-single screen, thin across a large desktop. This drives the M2 scope below.
-The 105° lens is the cause; crop/ROI or a closer mount would widen it.
+**Exposure matters twice over.** −9 was needed in daylight against −7 at night,
+and the shorter exposure also *improved precision* 3–5×. The intensity-weighted
+centroid needs a brightness gradient across the blob to work with; at longer
+exposures the marker saturates into a plateau of 255s and the weighting
+degenerates toward a plain geometric centroid. Default to the shortest exposure
+that still holds the dot, not merely one that works.
+
+**Effective resolution:** travel ÷ jitter gives ~1130 distinguishable
+horizontal positions and ~980 vertical — 3–4× better than the first night's
+figures, and enough to make relative-mode mapping comfortable. Horizontal and
+vertical gains also came out within 5% of each other on this run, where earlier
+runs disagreed by 60%; another sign the earlier travel figures were
+contaminated rather than merely noisy.
 **Hardware (SolidWorks):** monitor-top housing per `docs/HARDWARE.md` — must
 shroud the IR-cut photoresistor, allow tilt aiming, and optionally hold an
 IR-pass filter. Print, mount, and make a reflective dot (3M 7610 tape).
@@ -91,9 +101,10 @@ slots in from above with no fasteners, so it can be pulled out and re-seated
 freely during bring-up. `MonitorMountBase` replicates the SmartNav base (see
 HARDWARE.md → *Mount base provenance*). Good enough to test with; not the
 shipping design.
-**Exit criteria:** dot tracked at a steady ~30fps at normal seating distance,
-in daylight and lamplight, with jitter measured. *Remaining:* the run above
-covered one lighting condition; repeat under daylight and lamplight to close.
+**Exit criteria:** ✅ dot tracked at a steady ~30fps at normal seating distance,
+in daylight and lamplight, with jitter measured. All met — 29.3–29.5fps across
+every run, tracked under lamplight at −7 and daylight at −9 with no exposure
+clamping, jitter measured in both.
 
 ### M2 — Cursor control engine
 Mapper, One Euro smoothing, Windows SendInput backend, pause/resume hotkey,
@@ -101,12 +112,12 @@ config file (no UI yet — tune via config + hotkey reload).
 
 **Relative mode is the priority; absolute is secondary.** The M1 travel figures
 make this concrete. The target desktop is four 2560×1440 screens — 7680×3600
-virtual — and 68.7px of dot travel has to cover it:
+virtual — and 82.8px of dot travel has to cover it:
 
-| Span | Gain | 0.208px jitter becomes |
+| Span | Gain | 0.073px jitter becomes |
 |---|---|---|
-| One screen (2560 wide) | 37 px/px | ~8px |
-| Full desktop (7680 wide) | 112 px/px | ~23px |
+| One screen (2560 wide) | 31 px/px | ~2px |
+| Full desktop (7680 wide) | 93 px/px | ~7px |
 
 ⚠️ **Those extents are logical, DPI-scaled pixels**, read from a process that
 was not DPI-aware. At least one display is physically 3840×2160 at 150%
@@ -116,12 +127,17 @@ constant. Re-measure the virtual desktop from a process that has called
 gain. The ratios above still make the relative-vs-absolute argument — only the
 absolute numbers are provisional.
 
-At ~23px of cursor granularity, absolute mode cannot reliably land on small
-targets across the full desktop — the mapping is fixed, so a miss stays missed.
-Relative mode degrades gracefully instead: overshoot, then re-center and take a
-second pass. This matches how the SmartNav is used today, in relative mode for
+At ~7px of cursor granularity across the full desktop, absolute mode is not
+disqualified on resolution alone — an earlier draft of this section said it was,
+based on the contaminated travel figures. What still argues against it is that
+its mapping is fixed, so a miss stays missed, and that the four screens cover
+only ~53% of the virtual bounding box: absolute mapping aims at coordinates
+that may not be on any monitor. Relative mode degrades gracefully instead —
+overshoot, then re-center and take a second pass. This matches how the SmartNav
+is used today, in relative mode for
 exactly this reason. Build and tune relative first; treat absolute as a
-best-effort mode that is honest about being unsuited to a desktop this wide.
+best-effort mode, and expect it to need a screen-selection choice rather than a
+naive map onto the whole virtual desktop.
 
 **Multi-monitor moves here from M5.** With a 7680px-wide desktop the gain that
 suits one screen is 3× off for the whole thing, so it is a correctness concern

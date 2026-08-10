@@ -123,14 +123,29 @@ unusable here because of the −6 exposure clamp.
   glasses frame, or hat brim — same spots SmartNav users already use.
 - Spare SmartNav dots also work as-is.
 
-## Validation checklist (before M1 exit)
+## Validation checklist (M1 exit) — ✅ complete 2026-08-10
 
-- [ ] Camera enumerates as UVC on Windows; MJPEG 640×480@30 confirmed with a
-      real fps counter (not the advertised number)
-- [ ] Photoresistor shrouded → IR LEDs on and filter open with room lights on
-- [ ] Exposure can be driven low enough (via OpenCV `CAP_PROP_EXPOSURE`) that
-      the dot is the brightest blob in frame in a daylight room
-- [ ] Dot tracked across the full comfortable head-motion range at seating
-      distance; note the pixel span (this calibrates default gains)
-- [ ] Jitter while holding still measured (pixel std-dev) — feeds smoothing
-      defaults
+- [x] Camera enumerates as UVC on Windows; MJPEG 640×480@30 confirmed with a
+      real fps counter (not the advertised number) — 29.3–29.5fps measured
+- [x] Photoresistor shrouded → IR LEDs on and filter open with room lights on
+- [x] Exposure can be driven low enough (via OpenCV `CAP_PROP_EXPOSURE`) that
+      the dot is the brightest blob in frame in a daylight room — −9 in
+      daylight, −7 at night, unclamped on DirectShow, headroom to −10
+- [x] Dot tracked across the full comfortable head-motion range at seating
+      distance; note the pixel span (this calibrates default gains) —
+      **82.8 × 44.3px**
+- [x] Jitter while holding still measured (pixel std-dev) — feeds smoothing
+      defaults — **0.073 × 0.045px**
+
+**A caveat on the travel figure.** It measures how far *the user moved*, not a
+property of the camera, so it varies run to run and is not a constant to
+hardcode. Three runs gave 68.7, 41.4 and 82.8px horizontally; the first two
+were contaminated by the distractor-tracking bug described above. Treat 82.8 as
+a starting point for default gains and expect per-user calibration to be
+necessary — which is an argument for pulling the M5 calibration wizard forward.
+
+**Shorter exposure improves precision, not just contrast.** Jitter fell 3–5×
+between −7 and −9. The intensity-weighted centroid needs a brightness gradient
+across the blob; a saturated marker is a plateau of 255s and the weighting
+degenerates into a geometric centroid. Prefer the shortest exposure that still
+holds the dot.
