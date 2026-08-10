@@ -119,20 +119,31 @@ virtual — and 82.8px of dot travel has to cover it:
 | One screen (2560 wide) | 31 px/px | ~2px |
 | Full desktop (7680 wide) | 93 px/px | ~7px |
 
-⚠️ **Those extents are logical, DPI-scaled pixels**, read from a process that
-was not DPI-aware. At least one display is physically 3840×2160 at 150%
-scaling, and scaling may differ per monitor, so logical→physical is not one
-constant. Re-measure the virtual desktop from a process that has called
-`SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)` before fixing any default
-gain. The ratios above still make the relative-vs-absolute argument — only the
-absolute numbers are provisional.
+**Verified against the real desktop (2026-08-10), DPI-aware.** 7680×3600 with
+its origin at (−2560, −2160) is the true extent in *physical* pixels —
+`GetSystemMetrics` returns the same values with and without per-monitor
+awareness, so the gain figures above stand. An earlier draft of this section
+claimed they were DPI-scaled and needed re-measuring; that was wrong.
+
+The setup is nonetheless **mixed-DPI**, which is why awareness still matters:
+
+| Display | Origin | Physical | Scale |
+|---|---|---|---|
+| DISPLAY1 (top) | (0, −2160) | 3840×2160 | 150% |
+| DISPLAY3 (left) | (−2560, 0) | 2560×1440 | 100% |
+| DISPLAY4 (primary) | (0, 0) | 2560×1440 | 100% |
+| DISPLAY2 (right) | (2560, 0) | 2560×1440 | 100% |
+
+A process that has not called `SetProcessDpiAwarenessContext` sees DISPLAY1 as
+2560×1440, so it must be called before any metrics call.
 
 At ~7px of cursor granularity across the full desktop, absolute mode is not
 disqualified on resolution alone — an earlier draft of this section said it was,
 based on the contaminated travel figures. What still argues against it is that
 its mapping is fixed, so a miss stays missed, and that the four screens cover
-only ~53% of the virtual bounding box: absolute mapping aims at coordinates
-that may not be on any monitor. Relative mode degrades gracefully instead —
+only ~70% of the virtual bounding box: absolute mapping aims at coordinates
+that may not be on any monitor, and Windows then snaps the cursor to the
+nearest screen. Relative mode degrades gracefully instead —
 overshoot, then re-center and take a second pass. This matches how the SmartNav
 is used today, in relative mode for
 exactly this reason. Build and tune relative first; treat absolute as a
