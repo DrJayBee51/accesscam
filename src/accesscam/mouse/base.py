@@ -7,8 +7,16 @@ OS-specific plumbing lives in `windows.py`, which is imported lazily because
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
+
+# How much movement must pile up against a monitor boundary before the cursor
+# crosses it, in cursor pixels. Boundaries double as clutch points: the cursor
+# parks there while the head keeps moving, which is how a head-tracker user
+# reaches a far target without ending up in an awkward posture. Zero disables
+# the resistance and lets the cursor cross freely.
+DEFAULT_EDGE_RESISTANCE = 300.0
 
 # SendInput does not take pixels. Absolute mouse coordinates are normalised
 # into this range across the reference rectangle, which is the virtual desktop
@@ -91,12 +99,18 @@ class CursorController:
     land on a small target.
     """
 
-    def __init__(self, backend: MouseBackend) -> None:
+    def __init__(
+        self,
+        backend: MouseBackend,
+        edge_resistance: float = DEFAULT_EDGE_RESISTANCE,
+    ) -> None:
         self._backend = backend
         self._bounds = backend.bounds()
         self._monitors = backend.monitors()
+        self.edge_resistance = edge_resistance
         self._x = 0.0
         self._y = 0.0
+        self._pressure = 0.0
         self._last_sent: tuple[int, int] | None = None
         self.sync()
 
@@ -156,10 +170,39 @@ class CursorController:
 
         return (self._x, self._y)
 
+    def _resist(self, x: float, y: float) -> tuple[float, float]:
+        """Hold the cursor at a monitor boundary until enough movement piles up.
+
+        Crossing between displays is the one place a head-tracked cursor can be
+        parked deliberately, and users rely on that: the cursor stops while the
+        head keeps moving, which is what makes a far target reachable without
+        finishing in an awkward posture. Sliding straight through removes that.
+
+        Pressure accumulates only against a crossable boundary, and resets the
+        moment the cursor is not pushing at one - otherwise it would bank up
+        over a long session and the next boundary would be crossed for free.
+        """
+        if self.edge_resistance <= 0.0:
+            return (x, y)
+
+        here = self._monitor_at(self._x, self._y)
+        there = self._monitor_at(x, y)
+        if here is None or there is None or there is here:
+            self._pressure = 0.0
+            return (x, y)
+
+        held = here.clamp(x, y)
+        self._pressure += math.hypot(x - held[0], y - held[1])
+        if self._pressure < self.edge_resistance:
+            return held
+
+        self._pressure = 0.0
+        return (x, y)
+
     def move_by(self, dx: float, dy: float) -> None:
         """Add a sub-pixel delta and move the cursor if the rounded pixel changed."""
         candidate = self._bounds.clamp(self._x + dx, self._y + dy)
-        self._x, self._y = self._constrain(*candidate)
+        self._x, self._y = self._resist(*self._constrain(*candidate))
         target = (round(self._x), round(self._y))
         # Skipping unchanged positions keeps a still head from issuing 30
         # redundant input events a second.

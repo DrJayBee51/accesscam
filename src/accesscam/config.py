@@ -19,6 +19,7 @@ from pathlib import Path
 
 from accesscam.hotkeys import DEFAULT_HOTKEY
 from accesscam.mapper import DEFAULT_H_GAIN, DEFAULT_MAX_STEP, DEFAULT_V_GAIN
+from accesscam.mouse.base import DEFAULT_EDGE_RESISTANCE
 from accesscam.smoothing import DEFAULT_BETA, DEFAULT_D_CUTOFF, DEFAULT_MIN_CUTOFF
 from accesscam.tracker import (
     DEFAULT_MAX_AREA,
@@ -77,6 +78,11 @@ class Config:
     invert_y: bool = False
     dead_zone: float = 0.0
     max_step: float = DEFAULT_MAX_STEP
+
+    # Cursor
+    # Monitor boundaries double as clutch points - the cursor parks there
+    # while the head keeps moving. 0 lets it cross freely.
+    edge_resistance: float = DEFAULT_EDGE_RESISTANCE
 
     # Control
     hotkey: str = DEFAULT_HOTKEY

@@ -123,13 +123,24 @@ def test_cursor_does_not_travel_into_regions_with_no_monitor():
 
 
 def test_transition_to_another_monitor_still_works():
-    # Directly under the top display, moving up must cross onto it.
+    # Directly under the top display, sustained upward movement must cross onto
+    # it. Edge resistance delays the crossing but must not prevent it.
     mouse = RecordingMouse(start=(1500, 30))
-    cursor = CursorController(mouse)
+    cursor = CursorController(mouse, edge_resistance=300.0)
+
+    for _ in range(20):
+        cursor.move_by(0.0, -50.0)
+
+    assert cursor.position[1] < 0.0
+
+
+def test_transition_is_immediate_without_resistance():
+    mouse = RecordingMouse(start=(1500, 30))
+    cursor = CursorController(mouse, edge_resistance=0.0)
 
     cursor.move_by(0.0, -100.0)
 
-    assert cursor.position[1] < 0.0
+    assert cursor.position[1] == -70.0
 
 
 def test_blocked_axis_still_slides_along_the_edge():
@@ -142,6 +153,66 @@ def test_blocked_axis_still_slides_along_the_edge():
 
     assert cursor.position[0] == 4460.0
     assert cursor.position[1] == 0.0
+
+
+def test_boundary_holds_the_cursor_until_enough_pressure_builds():
+    # Monitor boundaries are the one place a head-tracked cursor can be parked
+    # deliberately, which is what lets a user reach a far target without
+    # finishing in an awkward posture.
+    mouse = RecordingMouse(start=(2500, 700))
+    cursor = CursorController(mouse, edge_resistance=300.0)
+
+    for _ in range(5):
+        cursor.move_by(40.0, 0.0)  # 200px of push, short of the threshold
+
+    assert cursor.position[0] == 2559.0  # parked on the primary's edge
+
+    for _ in range(5):
+        cursor.move_by(40.0, 0.0)
+
+    assert cursor.position[0] > 2560.0  # crossed onto the right monitor
+
+
+def test_pressure_resets_when_the_cursor_leaves_the_boundary():
+    # Otherwise pressure would bank up over a session and the next boundary
+    # would be crossed for free.
+    mouse = RecordingMouse(start=(2500, 700))
+    cursor = CursorController(mouse, edge_resistance=300.0)
+
+    for _ in range(5):
+        cursor.move_by(40.0, 0.0)
+    cursor.move_by(-500.0, 0.0)  # back into the middle of the primary
+
+    for _ in range(5):
+        cursor.move_by(40.0, 0.0)
+
+    assert cursor.position[0] <= 2559.0  # held again, not crossed on residue
+
+
+def test_edge_resistance_can_be_disabled():
+    mouse = RecordingMouse(start=(2500, 700))
+    cursor = CursorController(mouse, edge_resistance=0.0)
+
+    cursor.move_by(200.0, 0.0)
+
+    assert cursor.position[0] == 2700.0
+
+
+def test_resistance_does_not_apply_to_the_desktop_outer_edge():
+    # There is nothing to cross to, so this is a hard wall, and pressure must
+    # not accumulate there and pay for a later boundary crossing.
+    mouse = RecordingMouse(start=(5000, 700))
+    cursor = CursorController(mouse, edge_resistance=300.0)
+
+    for _ in range(10):
+        cursor.move_by(60.0, 0.0)
+
+    assert cursor.position[0] == 5119.0
+
+    cursor.move_by(-2600.0, 0.0)  # travel back to the primary/right boundary
+    cursor.move_by(-40.0, 0.0)
+
+    assert cursor.position[0] >= 2560.0  # did not slip across on banked pressure
 
 
 def test_single_monitor_backends_are_unaffected():

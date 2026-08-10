@@ -111,7 +111,7 @@ def run(config: Config, dry_run: bool = False) -> int:
     )
 
     backend = RecordingMouse() if dry_run else create_backend()
-    cursor = CursorController(backend)
+    cursor = CursorController(backend, edge_resistance=config.edge_resistance)
 
     try:
         camera = build_camera(config)
