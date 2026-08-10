@@ -8,6 +8,17 @@ AccessCam uses an off-the-shelf IR USB camera to track a retroreflective dot (wo
 
 🚧 **Early development.** Windows support is being built first, followed by Linux, then macOS. See [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) for the roadmap.
 
+**The cursor works.** There is no UI yet — you configure it with a JSON file
+and control it with a pause hotkey. To get it running on a machine, follow
+**[docs/RUNNING.md](docs/RUNNING.md)**.
+
+```powershell
+python -m accesscam --list-devices          # find the camera
+python -m accesscam --device 1 --write-config
+python -m accesscam --dry-run               # verify without moving the cursor
+python -m accesscam                         # F9 to take control
+```
+
 ## How it works
 
 ```
