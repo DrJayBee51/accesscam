@@ -36,6 +36,29 @@ _PER_MONITOR_AWARE_V2 = ctypes.c_void_p(-4)
 ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
 
 
+class RECT(ctypes.Structure):
+    _fields_ = (
+        ("left", wintypes.LONG),
+        ("top", wintypes.LONG),
+        ("right", wintypes.LONG),
+        ("bottom", wintypes.LONG),
+    )
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = (
+        ("cbSize", wintypes.DWORD),
+        ("rcMonitor", RECT),
+        ("rcWork", RECT),
+        ("dwFlags", wintypes.DWORD),
+    )
+
+
+MONITORENUMPROC = ctypes.WINFUNCTYPE(
+    wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(RECT), wintypes.LPARAM
+)
+
+
 class MOUSEINPUT(ctypes.Structure):
     _fields_ = (
         ("dx", wintypes.LONG),
@@ -87,6 +110,32 @@ class WindowsMouse:
             width=user32.GetSystemMetrics(SM_CXVIRTUALSCREEN),
             height=user32.GetSystemMetrics(SM_CYVIRTUALSCREEN),
         )
+
+    def monitors(self) -> list[ScreenBounds]:
+        """Every display's rectangle, which is not the same as their bounding box.
+
+        The controller needs these to avoid walking the cursor into a region
+        that belongs to no screen - see CursorController._constrain.
+        """
+        found: list[ScreenBounds] = []
+
+        def collect(handle, _hdc, _rect, _param) -> int:
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(MONITORINFO)
+            if user32.GetMonitorInfoW(handle, ctypes.byref(info)):
+                area = info.rcMonitor
+                found.append(
+                    ScreenBounds(
+                        left=area.left,
+                        top=area.top,
+                        width=area.right - area.left,
+                        height=area.bottom - area.top,
+                    )
+                )
+            return True
+
+        user32.EnumDisplayMonitors(None, None, MONITORENUMPROC(collect), 0)
+        return found
 
     def position(self) -> tuple[int, int]:
         point = wintypes.POINT()

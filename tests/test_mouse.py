@@ -99,3 +99,56 @@ def test_sync_adopts_the_os_cursor_position():
 def test_bounds_geometry():
     assert NEGATIVE_ORIGIN.right == 5120
     assert NEGATIVE_ORIGIN.bottom == 1440
+
+
+def test_cursor_does_not_travel_into_regions_with_no_monitor():
+    # The reported bug. The top display spans x 0-3840 and the right display
+    # x 2560-5120, so above x 3840 there is no screen. Pushing up from the
+    # right display there used to let the internal position climb into that
+    # empty rectangle while Windows pinned the visible cursor to the edge -
+    # so moving back down spent the phantom travel before anything moved.
+    mouse = RecordingMouse(start=(4500, 700))
+    cursor = CursorController(mouse)
+
+    for _ in range(60):
+        cursor.move_by(0.0, -30.0)  # 1800px of upward movement
+
+    assert cursor.position[1] == 0.0  # pinned at the top edge, not above it
+
+    # One frame of downward movement must move the cursor immediately.
+    before = mouse.position()
+    cursor.move_by(0.0, 12.0)
+
+    assert mouse.position()[1] > before[1]
+
+
+def test_transition_to_another_monitor_still_works():
+    # Directly under the top display, moving up must cross onto it.
+    mouse = RecordingMouse(start=(1500, 30))
+    cursor = CursorController(mouse)
+
+    cursor.move_by(0.0, -100.0)
+
+    assert cursor.position[1] < 0.0
+
+
+def test_blocked_axis_still_slides_along_the_edge():
+    # Pressed against the top edge where there is no screen above, horizontal
+    # movement must still work rather than sticking.
+    mouse = RecordingMouse(start=(4500, 0))
+    cursor = CursorController(mouse)
+
+    cursor.move_by(-40.0, -40.0)
+
+    assert cursor.position[0] == 4460.0
+    assert cursor.position[1] == 0.0
+
+
+def test_single_monitor_backends_are_unaffected():
+    single = ScreenBounds(left=0, top=0, width=1920, height=1080)
+    mouse = RecordingMouse(bounds=single, start=(100, 100))
+    cursor = CursorController(mouse)
+
+    cursor.move_by(-1000.0, -1000.0)
+
+    assert cursor.position == (0.0, 0.0)

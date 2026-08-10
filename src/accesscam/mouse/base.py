@@ -39,17 +39,13 @@ class ScreenBounds:
         return self.top + self.height
 
     def clamp(self, x: float, y: float) -> tuple[float, float]:
-        """Confine a point to the desktop rectangle.
-
-        Note this is the bounding box, not the union of the monitors: an
-        L-shaped or gapped arrangement leaves regions inside the box that are
-        not on any screen. Windows itself refuses to park the cursor off-screen
-        and snaps it to the nearest monitor, so clamping to the box is a safety
-        net against runaway values rather than a guarantee of visibility.
-        """
+        """Confine a point to this rectangle."""
         cx = min(max(x, float(self.left)), float(self.right - 1))
         cy = min(max(y, float(self.top)), float(self.bottom - 1))
         return (cx, cy)
+
+    def contains(self, x: float, y: float) -> bool:
+        return self.left <= x < self.right and self.top <= y < self.bottom
 
 
 @runtime_checkable
@@ -57,6 +53,8 @@ class MouseBackend(Protocol):
     """The minimum a platform must provide to drive the cursor."""
 
     def bounds(self) -> ScreenBounds: ...
+
+    def monitors(self) -> list[ScreenBounds]: ...
 
     def position(self) -> tuple[int, int]: ...
 
@@ -96,6 +94,7 @@ class CursorController:
     def __init__(self, backend: MouseBackend) -> None:
         self._backend = backend
         self._bounds = backend.bounds()
+        self._monitors = backend.monitors()
         self._x = 0.0
         self._y = 0.0
         self._last_sent: tuple[int, int] | None = None
@@ -117,13 +116,50 @@ class CursorController:
         means, so the next delta is applied from where the cursor actually is.
         """
         self._bounds = self._backend.bounds()
+        self._monitors = self._backend.monitors()
         x, y = self._backend.position()
         self._x, self._y = self._bounds.clamp(float(x), float(y))
         self._last_sent = (round(self._x), round(self._y))
 
+    def _monitor_at(self, x: float, y: float) -> ScreenBounds | None:
+        for monitor in self._monitors:
+            if monitor.contains(x, y):
+                return monitor
+        return None
+
+    def _constrain(self, x: float, y: float) -> tuple[float, float]:
+        """Keep the position somewhere the cursor can actually go.
+
+        Clamping to the bounding box is not enough. Monitors rarely tile their
+        own bounding box - a display above and to one side leaves a rectangle
+        belonging to no screen - and Windows will not park the cursor there, it
+        pins it to the edge. If this position were allowed to travel into that
+        dead space the internal position and the visible cursor would silently
+        diverge, and moving back would spend the phantom travel before anything
+        on screen moved.
+
+        When the full move is impossible, the move is retried with one axis
+        held, and the result is clamped into whichever monitor that lands on.
+        Clamping rather than rejecting matters: rejecting the step would leave
+        the cursor up to a whole step short of the edge, which at a max_step of
+        400px is a visible gap. A move onto a different monitor is still
+        accepted outright whenever the destination is real, so transitions
+        between displays keep working.
+        """
+        if not self._monitors or self._monitor_at(x, y) is not None:
+            return (x, y)
+
+        for probe_x, probe_y in ((x, self._y), (self._x, y), (self._x, self._y)):
+            host = self._monitor_at(probe_x, probe_y)
+            if host is not None:
+                return host.clamp(x, y)
+
+        return (self._x, self._y)
+
     def move_by(self, dx: float, dy: float) -> None:
         """Add a sub-pixel delta and move the cursor if the rounded pixel changed."""
-        self._x, self._y = self._bounds.clamp(self._x + dx, self._y + dy)
+        candidate = self._bounds.clamp(self._x + dx, self._y + dy)
+        self._x, self._y = self._constrain(*candidate)
         target = (round(self._x), round(self._y))
         # Skipping unchanged positions keeps a still head from issuing 30
         # redundant input events a second.

@@ -9,9 +9,16 @@ from __future__ import annotations
 
 from accesscam.mouse.base import ScreenBounds
 
-# Deliberately not (0, 0)-anchored. The development machine has monitors above
-# and to the left of the primary one, so the origin is negative there and the
-# default here mirrors that rather than the easy case.
+# The development machine's real layout: a 4K display above the primary and two
+# more either side. Deliberately not the easy case - the origin is negative, the
+# displays are not all the same size, and they do not tile their own bounding
+# box, which leaves regions belonging to no screen.
+DEFAULT_MONITORS = [
+    ScreenBounds(left=0, top=-2160, width=3840, height=2160),  # top, 4K
+    ScreenBounds(left=-2560, top=0, width=2560, height=1440),  # left
+    ScreenBounds(left=0, top=0, width=2560, height=1440),  # primary
+    ScreenBounds(left=2560, top=0, width=2560, height=1440),  # right
+]
 DEFAULT_BOUNDS = ScreenBounds(left=-2560, top=-2160, width=7680, height=3600)
 
 
@@ -22,13 +29,25 @@ class RecordingMouse:
         self,
         bounds: ScreenBounds | None = None,
         start: tuple[int, int] = (0, 0),
+        monitors: list[ScreenBounds] | None = None,
     ) -> None:
         self._bounds = bounds if bounds is not None else DEFAULT_BOUNDS
+        # A caller that supplies custom bounds but no monitor list almost
+        # always means "one screen exactly this size".
+        if monitors is not None:
+            self._monitors = monitors
+        elif bounds is not None:
+            self._monitors = [bounds]
+        else:
+            self._monitors = list(DEFAULT_MONITORS)
         self._position = start
         self.moves: list[tuple[int, int]] = []
 
     def bounds(self) -> ScreenBounds:
         return self._bounds
+
+    def monitors(self) -> list[ScreenBounds]:
+        return self._monitors
 
     def position(self) -> tuple[int, int]:
         return self._position
