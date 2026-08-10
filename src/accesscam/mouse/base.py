@@ -7,16 +7,29 @@ OS-specific plumbing lives in `windows.py`, which is imported lazily because
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-# How much movement must pile up against a monitor boundary before the cursor
-# crosses it, in cursor pixels. Boundaries double as clutch points: the cursor
-# parks there while the head keeps moving, which is how a head-tracker user
-# reaches a far target without ending up in an awkward posture. Zero disables
-# the resistance and lets the cursor cross freely.
-DEFAULT_EDGE_RESISTANCE = 300.0
+# How far past a hard edge the tracked position may travel while the visible
+# cursor stays pinned there, in cursor pixels.
+#
+# This is the head-tracking equivalent of lifting a mouse and setting it down
+# again. A head has no lift, so the only way to re-bias - to end a long reach
+# without being left leaning - is to push the cursor into an edge, keep going
+# to bank some travel, and then move back through that bank while the cursor
+# stays put. Moving past centre before the cursor releases is the point.
+#
+# It applies only where the cursor genuinely cannot go further. Boundaries
+# between two displays are crossable, so nothing is banked there and crossing
+# stays immediate.
+#
+# Off by default. Banking is exactly the behaviour that made the cursor feel
+# unresponsive at the top of a display with nothing above it - the difference
+# between a clutch and a fault is whether the user meant to push into the edge,
+# and the code cannot tell. Opt in by setting `clutch` in the config; 600 is a
+# reasonable first try, which at the measured gains is about 20px of head
+# movement.
+DEFAULT_CLUTCH = 0.0
 
 # SendInput does not take pixels. Absolute mouse coordinates are normalised
 # into this range across the reference rectangle, which is the virtual desktop
@@ -102,15 +115,18 @@ class CursorController:
     def __init__(
         self,
         backend: MouseBackend,
-        edge_resistance: float = DEFAULT_EDGE_RESISTANCE,
+        clutch: float = DEFAULT_CLUTCH,
     ) -> None:
         self._backend = backend
         self._bounds = backend.bounds()
         self._monitors = backend.monitors()
-        self.edge_resistance = edge_resistance
+        self.clutch = clutch
+        # The tracked position, which may sit up to `clutch` beyond the edge.
         self._x = 0.0
         self._y = 0.0
-        self._pressure = 0.0
+        # Where the cursor actually is: the tracked position with any banked
+        # over-travel removed.
+        self._cursor = (0.0, 0.0)
         self._last_sent: tuple[int, int] | None = None
         self.sync()
 
@@ -120,8 +136,18 @@ class CursorController:
 
     @property
     def position(self) -> tuple[float, float]:
-        """The internal sub-pixel position, not the OS cursor."""
+        """Where the cursor is, sub-pixel. Excludes any banked over-travel."""
+        return self._cursor
+
+    @property
+    def tracked(self) -> tuple[float, float]:
+        """The tracked position, which may be up to `clutch` beyond an edge."""
         return (self._x, self._y)
+
+    @property
+    def banked(self) -> tuple[float, float]:
+        """How much over-travel is currently held against an edge."""
+        return (self._x - self._cursor[0], self._y - self._cursor[1])
 
     def sync(self) -> None:
         """Adopt the OS cursor position, discarding accumulated fraction.
@@ -133,6 +159,7 @@ class CursorController:
         self._monitors = self._backend.monitors()
         x, y = self._backend.position()
         self._x, self._y = self._bounds.clamp(float(x), float(y))
+        self._cursor = (self._x, self._y)
         self._last_sent = (round(self._x), round(self._y))
 
     def _monitor_at(self, x: float, y: float) -> ScreenBounds | None:
@@ -163,47 +190,36 @@ class CursorController:
         if not self._monitors or self._monitor_at(x, y) is not None:
             return (x, y)
 
-        for probe_x, probe_y in ((x, self._y), (self._x, y), (self._x, self._y)):
+        # Probes are taken against the last *cursor* position, not the tracked
+        # one: the tracked position may be sitting out past an edge holding
+        # banked over-travel, which is not anywhere the cursor has ever been.
+        last_x, last_y = self._cursor
+        for probe_x, probe_y in ((x, last_y), (last_x, y), (last_x, last_y)):
             host = self._monitor_at(probe_x, probe_y)
             if host is not None:
                 return host.clamp(x, y)
 
-        return (self._x, self._y)
-
-    def _resist(self, x: float, y: float) -> tuple[float, float]:
-        """Hold the cursor at a monitor boundary until enough movement piles up.
-
-        Crossing between displays is the one place a head-tracked cursor can be
-        parked deliberately, and users rely on that: the cursor stops while the
-        head keeps moving, which is what makes a far target reachable without
-        finishing in an awkward posture. Sliding straight through removes that.
-
-        Pressure accumulates only against a crossable boundary, and resets the
-        moment the cursor is not pushing at one - otherwise it would bank up
-        over a long session and the next boundary would be crossed for free.
-        """
-        if self.edge_resistance <= 0.0:
-            return (x, y)
-
-        here = self._monitor_at(self._x, self._y)
-        there = self._monitor_at(x, y)
-        if here is None or there is None or there is here:
-            self._pressure = 0.0
-            return (x, y)
-
-        held = here.clamp(x, y)
-        self._pressure += math.hypot(x - held[0], y - held[1])
-        if self._pressure < self.edge_resistance:
-            return held
-
-        self._pressure = 0.0
-        return (x, y)
+        return self._cursor
 
     def move_by(self, dx: float, dy: float) -> None:
-        """Add a sub-pixel delta and move the cursor if the rounded pixel changed."""
-        candidate = self._bounds.clamp(self._x + dx, self._y + dy)
-        self._x, self._y = self._resist(*self._constrain(*candidate))
-        target = (round(self._x), round(self._y))
+        """Add a sub-pixel delta and move the cursor if the rounded pixel changed.
+
+        The tracked position is allowed to run past a hard edge by up to
+        `clutch`, while the cursor stays pinned. Moving back spends that bank
+        before the cursor follows, which is what lets the head return past
+        centre without dragging the cursor off the edge with it.
+        """
+        self._x += dx
+        self._y += dy
+
+        self._cursor = self._constrain(*self._bounds.clamp(self._x, self._y))
+
+        # Bound the bank, or a long push would take just as long to unwind.
+        limit = max(self.clutch, 0.0)
+        self._x = min(max(self._x, self._cursor[0] - limit), self._cursor[0] + limit)
+        self._y = min(max(self._y, self._cursor[1] - limit), self._cursor[1] + limit)
+
+        target = (round(self._cursor[0]), round(self._cursor[1]))
         # Skipping unchanged positions keeps a still head from issuing 30
         # redundant input events a second.
         if target != self._last_sent:

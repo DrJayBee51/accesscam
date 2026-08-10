@@ -126,7 +126,7 @@ def test_transition_to_another_monitor_still_works():
     # Directly under the top display, sustained upward movement must cross onto
     # it. Edge resistance delays the crossing but must not prevent it.
     mouse = RecordingMouse(start=(1500, 30))
-    cursor = CursorController(mouse, edge_resistance=300.0)
+    cursor = CursorController(mouse, clutch=0.0)
 
     for _ in range(20):
         cursor.move_by(0.0, -50.0)
@@ -136,7 +136,7 @@ def test_transition_to_another_monitor_still_works():
 
 def test_transition_is_immediate_without_resistance():
     mouse = RecordingMouse(start=(1500, 30))
-    cursor = CursorController(mouse, edge_resistance=0.0)
+    cursor = CursorController(mouse, clutch=0.0)
 
     cursor.move_by(0.0, -100.0)
 
@@ -155,64 +155,78 @@ def test_blocked_axis_still_slides_along_the_edge():
     assert cursor.position[1] == 0.0
 
 
-def test_boundary_holds_the_cursor_until_enough_pressure_builds():
-    # Monitor boundaries are the one place a head-tracked cursor can be parked
-    # deliberately, which is what lets a user reach a far target without
-    # finishing in an awkward posture.
+def test_clutch_banks_over_travel_at_a_hard_edge():
+    # Push into the right edge of the desktop and keep going: the cursor pins,
+    # and the over-travel is held so the head can move back through it.
+    mouse = RecordingMouse(start=(5000, 700))
+    cursor = CursorController(mouse, clutch=600.0)
+
+    for _ in range(10):
+        cursor.move_by(60.0, 0.0)  # 600px of push into a 119px gap
+
+    assert cursor.position[0] == 5119.0  # cursor pinned at the edge
+    assert cursor.banked[0] == pytest.approx(481.0)  # the rest is banked
+
+
+def test_moving_back_spends_the_bank_before_the_cursor_follows():
+    # This is the whole point: the head returns past centre while the cursor
+    # stays put.
+    mouse = RecordingMouse(start=(5000, 700))
+    cursor = CursorController(mouse, clutch=600.0)
+    for _ in range(10):
+        cursor.move_by(60.0, 0.0)
+
+    cursor.move_by(-300.0, 0.0)
+    assert cursor.position[0] == 5119.0  # still pinned, bank part spent
+
+    cursor.move_by(-300.0, 0.0)
+    assert cursor.position[0] < 5119.0  # bank exhausted, cursor follows
+
+
+def test_the_bank_is_bounded():
+    # Without a limit, a long push would take just as long to unwind and the
+    # cursor would feel dead.
+    mouse = RecordingMouse(start=(5000, 700))
+    cursor = CursorController(mouse, clutch=200.0)
+
+    for _ in range(50):
+        cursor.move_by(60.0, 0.0)  # 3000px of push
+
+    assert cursor.banked[0] == pytest.approx(200.0)
+
+
+def test_no_bank_accrues_at_a_crossable_boundary():
+    # Displays that adjoin are not walls. Crossing must stay immediate.
     mouse = RecordingMouse(start=(2500, 700))
-    cursor = CursorController(mouse, edge_resistance=300.0)
-
-    for _ in range(5):
-        cursor.move_by(40.0, 0.0)  # 200px of push, short of the threshold
-
-    assert cursor.position[0] == 2559.0  # parked on the primary's edge
-
-    for _ in range(5):
-        cursor.move_by(40.0, 0.0)
-
-    assert cursor.position[0] > 2560.0  # crossed onto the right monitor
-
-
-def test_pressure_resets_when_the_cursor_leaves_the_boundary():
-    # Otherwise pressure would bank up over a session and the next boundary
-    # would be crossed for free.
-    mouse = RecordingMouse(start=(2500, 700))
-    cursor = CursorController(mouse, edge_resistance=300.0)
-
-    for _ in range(5):
-        cursor.move_by(40.0, 0.0)
-    cursor.move_by(-500.0, 0.0)  # back into the middle of the primary
-
-    for _ in range(5):
-        cursor.move_by(40.0, 0.0)
-
-    assert cursor.position[0] <= 2559.0  # held again, not crossed on residue
-
-
-def test_edge_resistance_can_be_disabled():
-    mouse = RecordingMouse(start=(2500, 700))
-    cursor = CursorController(mouse, edge_resistance=0.0)
+    cursor = CursorController(mouse, clutch=600.0)
 
     cursor.move_by(200.0, 0.0)
 
     assert cursor.position[0] == 2700.0
+    assert cursor.banked == pytest.approx((0.0, 0.0))
 
 
-def test_resistance_does_not_apply_to_the_desktop_outer_edge():
-    # There is nothing to cross to, so this is a hard wall, and pressure must
-    # not accumulate there and pay for a later boundary crossing.
+def test_clutch_can_be_disabled():
     mouse = RecordingMouse(start=(5000, 700))
-    cursor = CursorController(mouse, edge_resistance=300.0)
+    cursor = CursorController(mouse, clutch=0.0)
 
     for _ in range(10):
         cursor.move_by(60.0, 0.0)
+    cursor.move_by(-30.0, 0.0)
 
-    assert cursor.position[0] == 5119.0
+    assert cursor.position[0] == pytest.approx(5089.0)  # responds immediately
 
-    cursor.move_by(-2600.0, 0.0)  # travel back to the primary/right boundary
-    cursor.move_by(-40.0, 0.0)
 
-    assert cursor.position[0] >= 2560.0  # did not slip across on banked pressure
+def test_clutch_applies_per_axis():
+    # Banking rightward travel must not delay vertical movement.
+    mouse = RecordingMouse(start=(5000, 700))
+    cursor = CursorController(mouse, clutch=600.0)
+    for _ in range(10):
+        cursor.move_by(60.0, 0.0)
+
+    cursor.move_by(0.0, 100.0)
+
+    assert cursor.position[1] == 800.0
 
 
 def test_single_monitor_backends_are_unaffected():

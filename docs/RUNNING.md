@@ -91,8 +91,7 @@ stops the program, and closing the terminal window kills it outright.
 | Symptom | Setting | Direction |
 |---|---|---|
 | Cursor too slow / too fast | `h_gain`, `v_gain` | up / down |
-| Hard to stop at a monitor edge | `edge_resistance` | up |
-| Crossing monitors feels sticky | `edge_resistance` | down, 0 disables |
+| Want to re-bias your head at an edge | `clutch` | up from 0, try 600 |
 | Cursor shimmers at rest | `min_cutoff` | down (calmer, more lag) |
 | Fast movement feels delayed | `beta` | up |
 | Marker lost in a bright room | `exposure` | down to -10 |
