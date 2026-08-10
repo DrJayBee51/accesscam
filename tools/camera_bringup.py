@@ -128,7 +128,8 @@ def draw_overlay(
             f"(driver {camera.actual_exposure:g})   threshold {tracker.threshold:3d}"
         ),
         (
-            f"dot  ({result.x:7.2f}, {result.y:7.2f})  area {result.area:6.1f}"
+            f"dot  ({result.x:7.2f}, {result.y:7.2f})  area {result.area:6.1f} "
+            f" bright {result.brightness:5.1f}"
             if result.found
             else "dot  NOT FOUND"
         ),
