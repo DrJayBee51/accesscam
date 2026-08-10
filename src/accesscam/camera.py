@@ -82,12 +82,16 @@ class CameraSource:
                 "Check that it is connected and not in use by another application."
             )
 
-        # FOURCC must be set before the frame size, or the driver may fall back
-        # to uncompressed YUY2 and silently drop to a fraction of the fps.
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        # Order matters, and not the way you would expect. On the Arducam
+        # (OV2710) under DirectShow, setting FOURCC *before* the frame size
+        # leaves the driver in uncompressed YUY2 - 14.8fps at 640x480, 10fps at
+        # 720p - and setting it both before and after is just as bad. Setting it
+        # only after the size negotiates MJPEG properly: 29.3fps at both sizes.
+        # Measured 2026-08-09; see the backend table in docs/HARDWARE.md.
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.settings.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.settings.height)
         cap.set(cv2.CAP_PROP_FPS, self.settings.fps)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 
         self._cap = cap
         self.disable_auto_exposure()

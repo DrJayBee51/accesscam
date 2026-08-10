@@ -62,8 +62,27 @@ the camera is mounted and a reflective dot is worn.
 
 **Software:** ✅ `tools/camera_bringup.py` built — live preview, measured fps,
 MJPEG/exposure control with clamp detection, threshold + sub-pixel blob
-centroid overlay, and travel-range and jitter measurement. Awaiting a mounted
-camera and marker to run against.
+centroid overlay, and travel-range and jitter measurement.
+
+**First real run against the Arducam (2026-08-09):**
+
+| Measurement | Result | |
+|---|---|---|
+| Format / rate | 640×480 MJPG, **29.3fps** measured | ✅ |
+| Exposure | requested −7, driver held −7.0 (no clamp) | ✅ |
+| Photoresistor shroud | IR LEDs on in a lit room | ✅ |
+| Marker travel | x 68.7px, y 48.1px | ⚠️ low |
+| Jitter (stdev) | x 0.208px, y 0.195px | ✅ |
+
+Threshold 200 isolated the dot at only −7 exposure, leaving headroom down to
+−10 for brighter rooms. Two findings came out of the run: the Arducam
+enumerates as **index 1** alongside a second webcam, and a FOURCC ordering bug
+in `camera.py` was halving the frame rate (see HARDWARE.md).
+
+**Travel is the weak number.** Dividing travel by jitter gives ~330
+distinguishable horizontal positions and ~247 vertical — comfortable across a
+single screen, thin across a large desktop. This drives the M2 scope below.
+The 105° lens is the cause; crop/ROI or a closer mount would widen it.
 **Hardware (SolidWorks):** monitor-top housing per `docs/HARDWARE.md` — must
 shroud the IR-cut photoresistor, allow tilt aiming, and optionally hold an
 IR-pass filter. Print, mount, and make a reflective dot (3M 7610 tape).
@@ -73,14 +92,37 @@ freely during bring-up. `MonitorMountBase` replicates the SmartNav base (see
 HARDWARE.md → *Mount base provenance*). Good enough to test with; not the
 shipping design.
 **Exit criteria:** dot tracked at a steady ~30fps at normal seating distance,
-in daylight and lamplight, with jitter measured.
+in daylight and lamplight, with jitter measured. *Remaining:* the run above
+covered one lighting condition; repeat under daylight and lamplight to close.
 
 ### M2 — Cursor control engine
-Mapper (both modes, per-axis gains, dead zone), One Euro smoothing, Windows
-SendInput backend, pause/resume hotkey, config file (no UI yet — tune via
-config + hotkey reload).
-**Exit criteria:** daily-drivable cursor control from the tracked dot; the
-user can navigate their desktop comfortably for 15+ minutes.
+Mapper, One Euro smoothing, Windows SendInput backend, pause/resume hotkey,
+config file (no UI yet — tune via config + hotkey reload).
+
+**Relative mode is the priority; absolute is secondary.** The M1 travel figures
+make this concrete. The target desktop is four 2560×1440 screens — 7680×3600
+virtual — and 68.7px of dot travel has to cover it:
+
+| Span | Gain | 0.208px jitter becomes |
+|---|---|---|
+| One screen (2560 wide) | 37 px/px | ~8px |
+| Full desktop (7680 wide) | 112 px/px | ~23px |
+
+At ~23px of cursor granularity, absolute mode cannot reliably land on small
+targets across the full desktop — the mapping is fixed, so a miss stays missed.
+Relative mode degrades gracefully instead: overshoot, then re-center and take a
+second pass. This matches how the SmartNav is used today, in relative mode for
+exactly this reason. Build and tune relative first; treat absolute as a
+best-effort mode that is honest about being unsuited to a desktop this wide.
+
+**Multi-monitor moves here from M5.** With a 7680px-wide desktop the gain that
+suits one screen is 3× off for the whole thing, so it is a correctness concern
+for the mapper rather than a later convenience. At minimum, decide whether
+gains map to one screen or the whole virtual desktop, and make it configurable.
+
+**Exit criteria:** daily-drivable cursor control from the tracked dot in
+relative mode; the user can navigate their desktop comfortably for 15+ minutes,
+including moving between monitors.
 
 ### M3 — Desktop UI & profiles, and the production housing (parallel)
 **Software:** PySide6 window: live preview with dot overlay, H/V gain sliders,
@@ -112,8 +154,8 @@ with photos, printable STL + filter/dot instructions published in `hardware/`.
 
 ### M5 — v2 features
 Dwell clicking (dwell time, click type, visual countdown), calibration wizard,
-configurable hotkeys, multi-monitor handling, optional gravity/precision mode
-near targets.
+configurable hotkeys, optional gravity/precision mode near targets. (Basic
+multi-monitor handling moved up to M2 — see there.)
 
 ### M6 — Linux port
 `uinput`-based mouse backend (evdev), packaging (AppImage or Flatpak),

@@ -87,6 +87,34 @@ tool displays both the requested and driver-reported exposure so clamping is
 visible, and `--backend dshow|msmf` switches between them. Re-check this on
 the Arducam — the behaviour is driver-specific, not universal.
 
+### Confirmed on the Arducam (2026-08-09, OpenCV 5.0, Python 3.14)
+
+The clamping above reproduces exactly: **MSMF holds at −6, DirectShow grants
+−10.** So DirectShow stays the Windows default.
+
+The Arducam enumerates as a generic **"USB Camera"** (`VID_0C45&PID_6366`).
+With a second webcam attached it came up as **index 1**, so bring-up needs
+`--device 1`; it is the only index granting 1920×1080, which is how to tell it
+apart from a LifeCam-class device.
+
+**FOURCC ordering gotcha — costs 2× the frame rate.** Setting `CAP_PROP_FOURCC`
+*before* the frame size leaves this camera in uncompressed YUY2. Setting it
+only *after* the size negotiates MJPEG. Setting it both before and after fails
+the same way as before-only, so the first call is what poisons the negotiation:
+
+| DirectShow call order | 640×480 | 1280×720 |
+|---|---|---|
+| FOURCC before size | YUY2, 14.8fps | YUY2, 10.0fps |
+| **FOURCC after size** | **MJPG, 29.3fps** | **MJPG, 29.3fps** |
+| FOURCC before *and* after | YUY2, 14.8fps | YUY2, 10.0fps |
+
+`camera.py` sets it after the size for this reason. Exposure −10 is honoured in
+every one of those orderings, so this is purely about frame rate.
+
+MSMF reaches 30fps at 640×480 and even 1920×1080, which means it negotiates
+MJPEG on its own — it just never reports a readable FOURCC. It remains
+unusable here because of the −6 exposure clamp.
+
 ## Retroreflective marker
 
 - Material: **3M Scotchlite 7610** high-gain reflective tape (this is what
