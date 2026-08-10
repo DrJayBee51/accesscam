@@ -108,6 +108,14 @@ virtual — and 68.7px of dot travel has to cover it:
 | One screen (2560 wide) | 37 px/px | ~8px |
 | Full desktop (7680 wide) | 112 px/px | ~23px |
 
+⚠️ **Those extents are logical, DPI-scaled pixels**, read from a process that
+was not DPI-aware. At least one display is physically 3840×2160 at 150%
+scaling, and scaling may differ per monitor, so logical→physical is not one
+constant. Re-measure the virtual desktop from a process that has called
+`SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)` before fixing any default
+gain. The ratios above still make the relative-vs-absolute argument — only the
+absolute numbers are provisional.
+
 At ~23px of cursor granularity, absolute mode cannot reliably land on small
 targets across the full desktop — the mapping is fixed, so a miss stays missed.
 Relative mode degrades gracefully instead: overshoot, then re-center and take a
