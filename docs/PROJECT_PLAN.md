@@ -155,6 +155,30 @@ suits one screen is 3× off for the whole thing, so it is a correctness concern
 for the mapper rather than a later convenience. At minimum, decide whether
 gains map to one screen or the whole virtual desktop, and make it configurable.
 
+**Progress:** mouse backend ✅, mapper ✅, One Euro smoothing ✅.
+**Pause hotkey ⚠️ blocked** — see below. `__main__.py` wiring not started.
+
+⚠️ **The pause hotkey registers but never fires.** `RegisterHotKey` returns
+success for a bare F9 and the listener thread pumps messages and unregisters
+cleanly, but `WM_HOTKEY` never arrives: 8 physical presses produced 0 triggers
+(2026-08-10). Ruled out so far: `MOD_NOREPEAT`, a registration conflict, a dead
+thread, and the specific combination (`ctrl+alt+p` behaved the same).
+
+Note for whoever picks this up: **software-injected keystrokes do not drive
+`RegisterHotKey` here.** A WH_KEYBOARD_LL hook saw a synthetic F9 arrive with
+`LLKHF_INJECTED` set while no `WM_HOTKEY` was delivered, so `SendInput` cannot
+be used to test this path — only physical presses prove anything.
+
+The hotkey defaults to a bare **F9** rather than a modifier chord because the
+fallback input when the cursor is unusable is a mouth-operated QuadStick with
+F9 already mapped; a chord would not be reachable from it. `parse_hotkey`
+therefore permits unmodified *function* keys while still rejecting bare letters
+and digits, which a global hotkey would swallow system-wide.
+
+**Wiring `__main__.py` should wait on this.** The pause control is what makes
+first light safe to try — the pipeline drives the mouse with no window to click
+on.
+
 **Exit criteria:** daily-drivable cursor control from the tracked dot in
 relative mode; the user can navigate their desktop comfortably for 15+ minutes,
 including moving between monitors.
