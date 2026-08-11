@@ -155,9 +155,20 @@ suits one screen is 3× off for the whole thing, so it is a correctness concern
 for the mapper rather than a later convenience. At minimum, decide whether
 gains map to one screen or the whole virtual desktop, and make it configurable.
 
-**Progress:** mouse backend ✅, mapper ✅, One Euro smoothing ✅, pause
-hotkey ✅. Remaining: config file, and wiring `__main__.py` into a real
-pipeline — which is first light.
+**Progress (2026-08-10):** mouse backend ✅, mapper ✅, One Euro smoothing ✅,
+pause hotkey ✅, config ✅, pipeline ✅. `python -m accesscam` drives the
+cursor, and it is running on both the development and work machines.
+
+Tuned by use rather than theory on first light: `h_gain` 100, `v_gain` 70,
+`min_cutoff` 0.15, `beta` 0.4, `max_step` 2500. Three things came out of that
+session — a `max_step` of 400 was truncating fast gestures so they travelled
+less far than slow ones over the same ground, the cursor accumulated movement
+into screen regions belonging to no monitor, and hover-driven UI needs
+AccessCam run as administrator.
+
+**Not yet signed off.** The exit criterion is a comfortable 15+ minutes of real
+work, and that has not happened yet — the first full day of use is the test.
+Treat reliability feedback from it as the priority over anything new.
 
 The hotkey is a bare **F9** rather than a modifier chord because the fallback
 input when the cursor is unusable is a mouth-operated QuadStick with F9 already
