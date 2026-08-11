@@ -107,6 +107,40 @@ Expect to want a different gain immediately. Edit `h_gain` and `v_gain` in the
 config: higher means the cursor travels further for the same head movement.
 The defaults of 31 and 32 are calibrated for one 2560x1440 screen.
 
+## A known-good starting point
+
+The config lives in `%APPDATA%\AccessCam\config.json` and is **not** in the
+repository, so it does not travel with a clone. These are the values tuned on
+the development machine on 2026-08-10, against an Arducam on a monitor-top
+mount at normal seating distance:
+
+```json
+{
+  "device": 1,
+  "exposure": -9,
+  "threshold": 200,
+  "h_gain": 100.0,
+  "v_gain": 70.0,
+  "min_cutoff": 0.15,
+  "beta": 0.4,
+  "max_step": 2500.0,
+  "hotkey": "f9"
+}
+```
+
+Anything omitted falls back to its default, so this is a complete file as it
+stands. Two caveats when copying it to another machine:
+
+- **`device` will differ.** Run `--list-devices` first.
+- **The gains depend on how far the camera sits from your head**, since they
+  are calibrated against how far the marker travels across the sensor. If the
+  mount geometry is the same, they should carry over; if the cursor feels wrong
+  in the first minute, gain is the thing to change.
+
+`v_gain` being lower than `h_gain` is deliberate — vertical head movement has
+less comfortable range than horizontal, so it needs less amplification per
+pixel to cover its axis.
+
 ## Safety
 
 The cursor is driven with no window to click on, so **F9 is the way out**. It
