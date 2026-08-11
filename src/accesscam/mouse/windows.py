@@ -81,6 +81,22 @@ class INPUT(ctypes.Structure):
     _fields_ = (("type", wintypes.DWORD), ("u", _Union))
 
 
+def is_elevated() -> bool:
+    """Whether this process is running with administrator rights.
+
+    It matters for more than convenience. UIPI stops a medium-integrity
+    process delivering input to a higher-integrity one: the cursor still moves,
+    because the cursor is global, but the target window never receives the
+    mouse messages. Anything that reacts to hovering - an on-screen keyboard
+    highlighting the key under the pointer, a UAC prompt, an application
+    running as administrator - simply does not respond.
+    """
+    try:
+        return bool(ctypes.WinDLL("shell32", use_last_error=True).IsUserAnAdmin())
+    except OSError:  # pragma: no cover - shell32 is always present in practice
+        return False
+
+
 def enable_dpi_awareness() -> bool:
     """Opt into per-monitor DPI awareness. Must run before any metrics call.
 

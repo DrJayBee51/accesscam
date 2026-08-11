@@ -88,6 +88,25 @@ def list_devices(max_index: int = 8) -> int:
     return 0
 
 
+def warn_if_not_elevated() -> None:
+    """Say so up front when hovering will not register on privileged windows.
+
+    UIPI silently drops input from a medium-integrity process to a higher
+    one. The cursor still moves, so nothing looks broken - the symptom is
+    only that hover-driven UI stops responding, which is very hard to
+    attribute without being told.
+    """
+    if sys.platform != "win32":
+        return
+    from accesscam.mouse.windows import is_elevated
+
+    if not is_elevated():
+        print("  note: not running as administrator. The cursor will move, but")
+        print("        windows at higher privilege will not see it hover, so")
+        print("        on-screen keyboards stop highlighting and UAC prompts")
+        print("        ignore it. Relaunch from an Administrator terminal.")
+
+
 def run(config: Config, dry_run: bool = False) -> int:
     tracker = DotTracker(
         threshold=config.threshold,
@@ -126,6 +145,8 @@ def run(config: Config, dry_run: bool = False) -> int:
     )
     if fmt["codec"] != "MJPG":
         print("  warning: not in MJPEG mode - expect a reduced frame rate")
+
+    warn_if_not_elevated()
 
     pause = PauseController()
 

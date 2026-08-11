@@ -63,7 +63,38 @@ see:
 If `lost` is high, the marker is not being seen: check the shroud, and try a
 shorter exposure with `--exposure -10`.
 
-## 5. First light
+## 5. Run it as administrator
+
+Not optional if you use an on-screen keyboard, or anything else that reacts to
+the pointer hovering.
+
+Windows' UIPI stops a normal-privilege process delivering input to a
+higher-privilege one. The cursor still moves — the cursor is global — but the
+target window never receives the mouse messages, so **hover-driven UI silently
+stops responding**. Confirmed against Comfort On-Screen Keyboard Pro: keys do
+not highlight under AccessCam unelevated, and highlight immediately when it is
+launched from an Administrator terminal. UAC prompts and applications running
+as administrator behave the same way.
+
+AccessCam prints a note at startup when it is not elevated, so this is visible
+rather than a mystery.
+
+Open PowerShell **as Administrator**, then:
+
+```powershell
+cd <wherever you cloned it>
+.venv\Scripts\accesscam.exe
+```
+
+To skip the elevation prompt every time, register it as a scheduled task that
+runs with highest privileges at logon:
+
+```powershell
+schtasks /create /tn AccessCam /rl highest /sc onlogon /f `
+  /tr "<path>\.venv\Scripts\accesscam.exe"
+```
+
+## 6. First light
 
 ```powershell
 python -m accesscam
