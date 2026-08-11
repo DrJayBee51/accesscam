@@ -33,10 +33,22 @@ DEFAULT_V_GAIN = 32.0
 
 # A tracking glitch should not fling the cursor across the desktop. The tracker
 # already refuses candidates more than max_jump (120px) from the last position,
-# which at these gains is still ~3700px of cursor travel in a single frame.
-# Clamping the step keeps a bad frame recoverable; at 30fps this ceiling still
-# allows roughly 12000px/s, far quicker than anyone moves deliberately.
-DEFAULT_MAX_STEP = 400.0
+# but at a gain of 100 that is still ~12000px of cursor travel in one frame, so
+# a ceiling is still worth having.
+#
+# It has to sit well above real movement, though. At 400 it was reached by a
+# marker moving only 4px per frame - about 120 marker px/s - so any head sweep
+# quicker than roughly 0.7s was truncated, and a fast sweep crossed one monitor
+# where it should have crossed nearly three. Whatever the ceiling, the excess
+# is now carried into the following frame rather than discarded, so the clamp
+# limits how fast the cursor moves without changing how far it goes.
+DEFAULT_MAX_STEP = 2500.0
+
+# How many extra frames of held-back movement may be carried. Enough that a
+# gesture a few times quicker than the ceiling still arrives in full, few
+# enough that a wild tracking jump is truncated rather than delivered as a
+# long slide.
+CARRY_FRAMES = 2.0
 
 
 @dataclass
@@ -66,10 +78,20 @@ class RelativeMapper:
     def __init__(self, settings: MapperSettings | None = None) -> None:
         self.settings = settings or MapperSettings()
         self._last: tuple[float, float] | None = None
+        # Diagnostics. max_step exists to catch a tracking glitch, but set too
+        # low it silently truncates real movement instead - and because the
+        # excess is discarded rather than carried, a fast gesture then travels
+        # less than a slow one covering the same distance. Counting the clips
+        # makes that visible rather than a matter of opinion.
+        self.steps = 0
+        self.clipped = 0
+        self.peak_demand = 0.0
+        self._residual = (0.0, 0.0)
 
     def reset(self) -> None:
         """Forget the previous position, so the next frame produces no motion."""
         self._last = None
+        self._residual = (0.0, 0.0)
 
     def update(self, position: tuple[float, float] | None) -> tuple[float, float]:
         """Return the cursor delta for this frame. `None` means the marker was lost.
@@ -81,6 +103,7 @@ class RelativeMapper:
         """
         if position is None:
             self._last = None
+            self._residual = (0.0, 0.0)
             return (0.0, 0.0)
 
         previous, self._last = self._last, position
@@ -98,11 +121,27 @@ class RelativeMapper:
         if self.settings.invert_y:
             dy = -dy
 
-        return _clamp_step(
-            dx * self.settings.h_gain,
-            dy * self.settings.v_gain,
-            self.settings.max_step,
-        )
+        step_x = dx * self.settings.h_gain
+        step_y = dy * self.settings.v_gain
+
+        demand = math.hypot(step_x, step_y)
+        self.steps += 1
+        self.peak_demand = max(self.peak_demand, demand)
+        if self.settings.max_step > 0.0 and demand > self.settings.max_step:
+            self.clipped += 1
+
+        # Anything the clamp holds back is carried into the next frame instead
+        # of being thrown away. Discarding it made a fast gesture travel less
+        # than a slow one over the same ground, which is the one thing a
+        # pointer must never do. The carry is itself bounded, so a genuine
+        # tracking glitch is still truncated rather than paid out over the
+        # following second.
+        limit = self.settings.max_step
+        wanted_x = step_x + self._residual[0]
+        wanted_y = step_y + self._residual[1]
+        moved = _clamp_step(wanted_x, wanted_y, limit)
+        self._residual = _clamp_step(wanted_x - moved[0], wanted_y - moved[1], limit * CARRY_FRAMES)
+        return moved
 
 
 class AbsoluteMapper:

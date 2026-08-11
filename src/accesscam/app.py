@@ -186,8 +186,9 @@ def run(config: Config, dry_run: bool = False) -> int:
                 tracked = "tracking" if result.found else "NO MARKER"
                 print(
                     f"\r{state:6s} | {camera.measured_fps:4.1f}fps | {tracked:9s} | "
-                    f"cursor {cursor.position[0]:8.1f},{cursor.position[1]:8.1f} | "
-                    f"lost {100 * lost / max(frames, 1):3.0f}%",
+                    f"lost {100 * lost / max(frames, 1):3.0f}% | "
+                    f"peak {mapper.peak_demand:5.0f}px/frame | "
+                    f"clipped {100 * mapper.clipped / max(mapper.steps, 1):3.0f}%",
                     end="",
                     flush=True,
                 )
@@ -207,6 +208,17 @@ def main() -> int:
     parser.add_argument("--device", type=int, default=None, help="camera index override")
     parser.add_argument("--hotkey", default=None, help="pause hotkey override, e.g. f9")
     parser.add_argument("--exposure", type=int, default=None, help="exposure override")
+    # Feel is tuned by trying values, not by reasoning about them, so the ones
+    # that get iterated on are reachable without editing the config first.
+    parser.add_argument("--h-gain", type=float, default=None, help="horizontal gain")
+    parser.add_argument("--v-gain", type=float, default=None, help="vertical gain")
+    parser.add_argument("--gain", type=float, default=None, help="both gains at once")
+    parser.add_argument("--min-cutoff", type=float, default=None, help="smoothing at rest")
+    parser.add_argument("--beta", type=float, default=None, help="how fast smoothing lets go")
+    parser.add_argument("--clutch", type=float, default=None, help="edge over-travel bank")
+    parser.add_argument(
+        "--max-step", type=float, default=None, help="ceiling on cursor movement per frame"
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -234,6 +246,20 @@ def main() -> int:
         config.hotkey = args.hotkey
     if args.exposure is not None:
         config.exposure = args.exposure
+    if args.gain is not None:
+        config.h_gain = config.v_gain = args.gain
+    if args.h_gain is not None:
+        config.h_gain = args.h_gain
+    if args.v_gain is not None:
+        config.v_gain = args.v_gain
+    if args.min_cutoff is not None:
+        config.min_cutoff = args.min_cutoff
+    if args.beta is not None:
+        config.beta = args.beta
+    if args.clutch is not None:
+        config.clutch = args.clutch
+    if args.max_step is not None:
+        config.max_step = args.max_step
 
     if args.write_config:
         written = config.save(args.config)
