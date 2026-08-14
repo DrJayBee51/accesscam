@@ -68,6 +68,7 @@ class DotTracker:
         max_area: float = DEFAULT_MAX_AREA,
         max_jump: float = DEFAULT_MAX_JUMP,
         min_circularity: float = DEFAULT_MIN_CIRCULARITY,
+        roi: tuple[int, int, int, int] | None = None,
     ) -> None:
         self.threshold = threshold
         self.min_area = min_area
@@ -77,6 +78,12 @@ class DotTracker:
         # lamp from stealing the track mid-motion.
         self.max_jump = max_jump
         self.min_circularity = min_circularity
+        # An optional (x, y, w, h) box in frame pixels. Blobs whose centre falls
+        # outside it are ignored entirely, which is the blunt-but-reliable way to
+        # exclude fixed bright objects at the frame edges - daylit windows, a
+        # lamp - that rival the marker and would otherwise steal the track. None
+        # means the whole frame is searched.
+        self.roi = roi
         self._last: tuple[float, float] | None = None
 
     def reset(self) -> None:
@@ -96,6 +103,8 @@ class DotTracker:
             if not self.min_area <= area <= self.max_area:
                 continue
             if _circularity(contour, area) < self.min_circularity:
+                continue
+            if self.roi is not None and not _inside(_geometric_centroid(contour), self.roi):
                 continue
             candidates.append(_Candidate(contour, area, _mean_intensity(gray, contour)))
 
@@ -159,6 +168,12 @@ def _mean_intensity(gray: np.ndarray, contour: np.ndarray) -> float:
 
 def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
     return float(np.hypot(a[0] - b[0], a[1] - b[1]))
+
+
+def _inside(point: tuple[float, float], roi: tuple[int, int, int, int]) -> bool:
+    """Whether a point falls within the (x, y, w, h) region of interest."""
+    x, y, w, h = roi
+    return x <= point[0] < x + w and y <= point[1] < y + h
 
 
 def _geometric_centroid(contour: np.ndarray) -> tuple[float, float]:

@@ -123,6 +123,35 @@ def test_shape_filter_can_be_disabled():
     assert result.x > 150
 
 
+def test_roi_excludes_blobs_outside_the_box():
+    # A bright window at the frame edge would win on brightness, but a region
+    # of interest around the marker should exclude it entirely.
+    tracker = DotTracker(roi=(60, 80, 120, 100))
+
+    gray = frame_with_dot(120, 120, radius=5, brightness=240)
+    cv2.circle(gray, (290, 40), 18, 255, cv2.FILLED)
+    result = tracker.process(gray)
+
+    assert result.found
+    assert result.x == pytest.approx(120.0, abs=2.0)
+
+
+def test_roi_reports_not_found_when_only_distractor_is_outside():
+    tracker = DotTracker(roi=(0, 0, 100, 100))
+
+    # The only bright blob sits outside the ROI, so nothing should be tracked.
+    result = tracker.process(frame_with_dot(280, 200, radius=6))
+
+    assert not result.found
+
+
+def test_no_roi_searches_whole_frame():
+    tracker = DotTracker(roi=None)
+    result = tracker.process(frame_with_dot(280, 200, radius=6))
+
+    assert result.found
+
+
 def test_rejects_colour_frames():
     tracker = DotTracker()
     with pytest.raises(ValueError):

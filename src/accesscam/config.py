@@ -65,6 +65,14 @@ class Config:
     max_area: float = DEFAULT_MAX_AREA
     max_jump: float = DEFAULT_MAX_JUMP
     min_circularity: float = DEFAULT_MIN_CIRCULARITY
+    # Region of interest, in frame pixels. Only blobs whose centre falls inside
+    # this box are considered, which excludes fixed bright objects at the frame
+    # edges (daylit windows, a lamp) that would otherwise rival the marker. All
+    # zero means the whole frame is searched, i.e. disabled.
+    roi_x: int = 0
+    roi_y: int = 0
+    roi_w: int = 0
+    roi_h: int = 0
 
     # Smoothing
     min_cutoff: float = DEFAULT_MIN_CUTOFF
@@ -88,6 +96,12 @@ class Config:
 
     # Control
     hotkey: str = DEFAULT_HOTKEY
+
+    def roi(self) -> tuple[int, int, int, int] | None:
+        """The (x, y, w, h) region of interest, or None if it is disabled."""
+        if self.roi_w > 0 and self.roi_h > 0:
+            return (self.roi_x, self.roi_y, self.roi_w, self.roi_h)
+        return None
 
     @classmethod
     def load(cls, path: Path | None = None) -> Config:
