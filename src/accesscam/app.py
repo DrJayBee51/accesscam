@@ -222,6 +222,11 @@ def main() -> int:
         action="store_true",
         help="probe for cameras and exit - use this first on a new machine",
     )
+    parser.add_argument(
+        "--ui",
+        action="store_true",
+        help="open the settings window instead of running headless",
+    )
     args = parser.parse_args()
 
     if args.list_devices:
@@ -255,4 +260,17 @@ def main() -> int:
         return 0
 
     print(f"config: {args.config or config_path()}")
+
+    if args.ui:
+        # Imported here, not at module scope: the headless path is the one
+        # someone depends on to use their computer, and it must not fail to
+        # start because a UI toolkit is missing or broken.
+        try:
+            from accesscam.ui import launch
+        except ImportError as exc:
+            print(f"error: the settings window needs PySide6 ({exc})", file=sys.stderr)
+            print("Install it, or run without --ui.", file=sys.stderr)
+            return 1
+        return launch(config, args.config, dry_run=args.dry_run)
+
     return run(config, dry_run=args.dry_run)

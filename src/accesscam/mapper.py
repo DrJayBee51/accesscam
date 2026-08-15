@@ -198,21 +198,12 @@ class RelativeMapper:
         return moved
 
     def _acceleration(self, speed: float) -> float:
-        """Gain multiplier for this marker speed, from accel_floor up towards 1.0.
-
-        A Hill curve: at rest it is exactly the floor, at the knee exactly
-        halfway, and it approaches 1.0 without ever exceeding it - so the curve
-        can only ever reduce gain. That matters for max_step, which sits
-        downstream and would otherwise start clipping movement it used to pass.
-        """
-        floor = self.settings.accel_floor
-        if floor >= 1.0 or self.settings.accel_knee <= 0.0:
-            return 1.0
-        if speed <= 0.0:
-            return floor
-        fast = speed**self.settings.accel_sharpness
-        knee = self.settings.accel_knee**self.settings.accel_sharpness
-        return floor + (1.0 - floor) * (fast / (fast + knee))
+        return acceleration_scale(
+            speed,
+            self.settings.accel_floor,
+            self.settings.accel_knee,
+            self.settings.accel_sharpness,
+        )
 
 
 class AbsoluteMapper:
@@ -250,6 +241,32 @@ class AbsoluteMapper:
         x = self.target.left + fx * (self.target.width - 1)
         y = self.target.top + fy * (self.target.height - 1)
         return self.target.clamp(x, y)
+
+
+def acceleration_scale(
+    speed: float,
+    floor: float = DEFAULT_ACCEL_FLOOR,
+    knee: float = DEFAULT_ACCEL_KNEE,
+    sharpness: float = DEFAULT_ACCEL_SHARPNESS,
+) -> float:
+    """Gain multiplier for this marker speed, from `floor` up towards 1.0.
+
+    A Hill curve: at rest it is exactly the floor, at the knee exactly halfway,
+    and it approaches 1.0 without ever exceeding it - so the curve can only ever
+    reduce gain. That matters for max_step, which sits downstream and would
+    otherwise start clipping movement it used to pass.
+
+    Module-level rather than a method so the settings UI can plot the same
+    function the mapper runs. A UI that reimplemented it would eventually
+    disagree, and the plot would then be a confident lie.
+    """
+    if floor >= 1.0 or knee <= 0.0:
+        return 1.0
+    if speed <= 0.0:
+        return floor
+    fast = speed**sharpness
+    at_knee = knee**sharpness
+    return floor + (1.0 - floor) * (fast / (fast + at_knee))
 
 
 def _unit(value: float, extent: int) -> float:

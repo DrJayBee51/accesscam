@@ -4,7 +4,13 @@ import math
 
 import pytest
 
-from accesscam.mapper import CARRY_FRAMES, AbsoluteMapper, MapperSettings, RelativeMapper
+from accesscam.mapper import (
+    CARRY_FRAMES,
+    AbsoluteMapper,
+    MapperSettings,
+    RelativeMapper,
+    acceleration_scale,
+)
 from accesscam.mouse.base import ScreenBounds
 
 PRIMARY = ScreenBounds(left=0, top=0, width=2560, height=1440)
@@ -264,6 +270,45 @@ def test_reset_clears_the_timestamp_with_the_position():
 
     dx, _ = mapper.update((105.0, 100.0), timestamp=9.1)
     assert dx == pytest.approx(5.0 * 10.0 * 0.6)
+
+
+def test_acceleration_scale_matches_what_the_mapper_applies():
+    # The settings UI plots this function rather than reimplementing the curve.
+    # If the two ever disagree the plot becomes a confident lie, so pin them
+    # together here.
+    floor, knee, sharpness = 0.35, 25.0, 3.0
+    mapper = RelativeMapper(
+        MapperSettings(
+            h_gain=10.0,
+            v_gain=10.0,
+            invert_x=False,
+            accel_floor=floor,
+            accel_knee=knee,
+            accel_sharpness=sharpness,
+        )
+    )
+
+    for speed in (1.0, 10.0, 25.0, 80.0, 200.0):
+        mapper.reset()
+        mapper.update((0.0, 0.0), timestamp=0.0)
+        travel = speed * 0.1
+        dx, _ = mapper.update((travel, 0.0), timestamp=0.1)
+        applied = dx / travel / 10.0
+        assert applied == pytest.approx(acceleration_scale(speed, floor, knee, sharpness))
+
+
+def test_acceleration_scale_is_bounded_by_the_floor_and_one():
+    assert acceleration_scale(0.0, 0.35, 25.0, 3.0) == pytest.approx(0.35)
+    assert acceleration_scale(25.0, 0.35, 25.0, 3.0) == pytest.approx(0.675)
+    assert acceleration_scale(1e6, 0.35, 25.0, 3.0) < 1.0
+    assert acceleration_scale(1e6, 0.35, 25.0, 3.0) > 0.999
+
+
+def test_acceleration_scale_is_flat_when_disabled():
+    assert acceleration_scale(0.0, 1.0, 25.0, 3.0) == 1.0
+    assert acceleration_scale(500.0, 1.0, 25.0, 3.0) == 1.0
+    # A knee of zero would divide by zero; treat it as disabled.
+    assert acceleration_scale(10.0, 0.2, 0.0, 3.0) == 1.0
 
 
 def test_absolute_maps_frame_corners_onto_the_target_screen():
