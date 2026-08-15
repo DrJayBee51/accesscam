@@ -167,10 +167,56 @@ stops the program, and closing the terminal window kills it outright.
 | Something else gets tracked | `threshold` | up toward 255 |
 | Cursor jumps to a bright object | `max_area` | down |
 | A daylit window keeps stealing it | `roi_*` | draw a box around yourself |
+| Cannot hold still to select text | `accel_floor` | down from 1.0, try 0.35 |
+| Long sweeps feel sluggish | `accel_knee` | down from 40 |
 
 Shorter exposure improves precision as well as contrast: the sub-pixel centroid
 needs a brightness gradient across the blob, and a saturated marker is a flat
 plateau. Prefer the shortest exposure that still holds the dot.
+
+## Holding the cursor still (pointer acceleration)
+
+Four days of full-day use at work surfaced one problem the smoother cannot fix:
+about 4px of wander remains at rest, and a flat gain multiplies all of it. That
+is tiring over hours and it makes selecting text hard, because a caret has to be
+placed precisely and then held.
+
+`accel_floor` scales the gain down while the marker is nearly still and restores
+it as you move, so precision and reach stop competing for one number:
+
+```json
+{
+  "accel_floor": 0.35,
+  "accel_knee": 40.0,
+  "accel_sharpness": 1.8
+}
+```
+
+- **`accel_floor`** — fraction of full gain used at rest. `1.0` is the default
+  and disables the curve entirely, so the mapper behaves exactly as it did
+  before. `0.35` cuts the resting wander to roughly a third.
+- **`accel_knee`** — marker speed, in camera px/s, at which the gain has climbed
+  halfway back. Below it you are positioning; above it you are travelling.
+- **`accel_sharpness`** — how abruptly the gain climbs through the knee. Most
+  setups never need to move it.
+
+The scale is taken from the speed of the whole 2D movement and applied to
+`h_gain` and `v_gain` together, so your existing calibration keeps its ratio and
+a diagonal is never bent. The curve only ever reduces gain, so a fast sweep still
+reaches as far as it does today.
+
+Tune it in this order — each step depends on the one before:
+
+1. **Move `accel_floor` alone** until you can place and hold a caret. This is
+   the parameter that fixes the fatigue.
+2. **Then check a long sweep** across every screen. If it drags, lower
+   `accel_knee` — you are still in the slow region during real travel.
+3. **Only then touch `accel_sharpness`**, up if the transition feels mushy, down
+   if the cursor lurches as it picks up speed.
+
+Give any setting a full working day before judging it. This was found over four
+days, not four minutes, and a curve that feels strange for ten minutes is often
+the right one.
 
 ## When something bright keeps stealing the track
 

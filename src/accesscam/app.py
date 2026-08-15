@@ -127,6 +127,9 @@ def run(config: Config, dry_run: bool = False) -> int:
             invert_y=config.invert_y,
             dead_zone=config.dead_zone,
             max_step=config.max_step,
+            accel_floor=config.accel_floor,
+            accel_knee=config.accel_knee,
+            accel_sharpness=config.accel_sharpness,
         )
     )
 
@@ -152,6 +155,12 @@ def run(config: Config, dry_run: bool = False) -> int:
         print(
             f"  region of interest: {roi[2]}x{roi[3]} at ({roi[0]}, {roi[1]}) "
             "- marker sought only inside it"
+        )
+
+    if config.accel_floor < 1.0:
+        print(
+            f"  acceleration: gain {config.accel_floor * config.h_gain:.1f} at rest, "
+            f"{config.h_gain:.1f} when sweeping (knee {config.accel_knee:g} px/s)"
         )
 
     warn_if_not_elevated()

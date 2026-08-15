@@ -20,9 +20,15 @@ gain: retune one and the other still holds.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass
 
 from accesscam.mouse.base import ScreenBounds
+
+# Shared with the smoother rather than restated: both clamp the same quantity -
+# a plausible interval between camera frames - so a dropped USB frame cannot be
+# read as real timing. Two copies would be two things to keep in step.
+from accesscam.smoothing import MAX_TIMESTEP
 
 # Derived from the M1 bring-up run: 82.8 x 44.3px of marker travel across one
 # 2560x1440 screen. Provisional - travel measures how far the user moved their
@@ -50,6 +56,23 @@ DEFAULT_MAX_STEP = 2500.0
 # long slide.
 CARRY_FRAMES = 2.0
 
+# Pointer acceleration. A flat gain has to serve two incompatible jobs at once -
+# crossing a 7680px desktop and landing a caret between two characters - and the
+# second one loses: the ~4.2px of resting wander the smoother cannot reach is
+# multiplied by whatever the gain is. Scaling gain down while the marker is
+# nearly still shrinks that wander proportionally, and unlike a dead zone it
+# keeps slow deliberate movement instead of discarding it.
+#
+# Off by default. A floor of 1.0 collapses the expression to the flat gain and
+# reproduces today's behaviour exactly, so this ships inert until it is asked
+# for - the same reasoning the clutch is opted into rather than discovered.
+DEFAULT_ACCEL_FLOOR = 1.0
+# Marker speed at which the gain has climbed halfway back to full. Below it the
+# user is positioning, above it they are travelling; 40px/s sits between the two
+# on the measured travel of 82.8px across one screen.
+DEFAULT_ACCEL_KNEE = 40.0
+DEFAULT_ACCEL_SHARPNESS = 1.8
+
 
 @dataclass
 class MapperSettings:
@@ -70,6 +93,14 @@ class MapperSettings:
     # land on a small target.
     dead_zone: float = 0.0
     max_step: float = DEFAULT_MAX_STEP
+    # Acceleration. `accel_floor` is the fraction of full gain used when the
+    # marker is still and is the one that buys precision; 1.0 disables the curve.
+    # `accel_knee` is the marker speed at the halfway point, `accel_sharpness`
+    # how abruptly the gain climbs through it. Tune the floor first with the
+    # other two left alone - they only shape the return to full speed.
+    accel_floor: float = DEFAULT_ACCEL_FLOOR
+    accel_knee: float = DEFAULT_ACCEL_KNEE
+    accel_sharpness: float = DEFAULT_ACCEL_SHARPNESS
 
 
 class RelativeMapper:
@@ -87,33 +118,47 @@ class RelativeMapper:
         self.clipped = 0
         self.peak_demand = 0.0
         self._residual = (0.0, 0.0)
+        self._last_time: float | None = None
 
     def reset(self) -> None:
         """Forget the previous position, so the next frame produces no motion."""
         self._last = None
+        self._last_time = None
         self._residual = (0.0, 0.0)
 
-    def update(self, position: tuple[float, float] | None) -> tuple[float, float]:
+    def update(
+        self,
+        position: tuple[float, float] | None,
+        timestamp: float | None = None,
+    ) -> tuple[float, float]:
         """Return the cursor delta for this frame. `None` means the marker was lost.
 
         The frame after an acquisition always yields (0, 0). Without that, a
         marker reacquired somewhere else in frame - the user looked away and
         back, or the track briefly dropped - would produce one enormous
         displacement and throw the cursor across the desktop.
+
+        `timestamp` exists only to give the acceleration curve a speed. It
+        defaults to the current time, as the smoother's does, so callers that do
+        not care can ignore it.
         """
         if position is None:
             self._last = None
+            self._last_time = None
             self._residual = (0.0, 0.0)
             return (0.0, 0.0)
 
+        now = time.monotonic() if timestamp is None else timestamp
         previous, self._last = self._last, position
-        if previous is None:
+        previous_time, self._last_time = self._last_time, now
+        if previous is None or previous_time is None:
             return (0.0, 0.0)
 
         dx = position[0] - previous[0]
         dy = position[1] - previous[1]
 
-        if math.hypot(dx, dy) < self.settings.dead_zone:
+        travelled = math.hypot(dx, dy)
+        if travelled < self.settings.dead_zone:
             return (0.0, 0.0)
 
         if self.settings.invert_x:
@@ -121,8 +166,17 @@ class RelativeMapper:
         if self.settings.invert_y:
             dy = -dy
 
-        step_x = dx * self.settings.h_gain
-        step_y = dy * self.settings.v_gain
+        # One scale for both axes, taken from the speed of the whole 2D
+        # movement. Per-axis curves would scale a diagonal unevenly and bend it,
+        # and unlike the smoother's per-axis lag - which both axes recover from -
+        # a bent gain is permanent: the cursor lands somewhere else. Speed is
+        # measured in camera px/s, upstream of the gain, so the knee stays put
+        # when h_gain or v_gain is retuned.
+        dt = min(max(now - previous_time, 1e-6), MAX_TIMESTEP)
+        scale = self._acceleration(travelled / dt)
+
+        step_x = dx * self.settings.h_gain * scale
+        step_y = dy * self.settings.v_gain * scale
 
         demand = math.hypot(step_x, step_y)
         self.steps += 1
@@ -142,6 +196,23 @@ class RelativeMapper:
         moved = _clamp_step(wanted_x, wanted_y, limit)
         self._residual = _clamp_step(wanted_x - moved[0], wanted_y - moved[1], limit * CARRY_FRAMES)
         return moved
+
+    def _acceleration(self, speed: float) -> float:
+        """Gain multiplier for this marker speed, from accel_floor up towards 1.0.
+
+        A Hill curve: at rest it is exactly the floor, at the knee exactly
+        halfway, and it approaches 1.0 without ever exceeding it - so the curve
+        can only ever reduce gain. That matters for max_step, which sits
+        downstream and would otherwise start clipping movement it used to pass.
+        """
+        floor = self.settings.accel_floor
+        if floor >= 1.0 or self.settings.accel_knee <= 0.0:
+            return 1.0
+        if speed <= 0.0:
+            return floor
+        fast = speed**self.settings.accel_sharpness
+        knee = self.settings.accel_knee**self.settings.accel_sharpness
+        return floor + (1.0 - floor) * (fast / (fast + knee))
 
 
 class AbsoluteMapper:

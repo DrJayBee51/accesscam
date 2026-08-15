@@ -18,7 +18,14 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from accesscam.hotkeys import DEFAULT_HOTKEY
-from accesscam.mapper import DEFAULT_H_GAIN, DEFAULT_MAX_STEP, DEFAULT_V_GAIN
+from accesscam.mapper import (
+    DEFAULT_ACCEL_FLOOR,
+    DEFAULT_ACCEL_KNEE,
+    DEFAULT_ACCEL_SHARPNESS,
+    DEFAULT_H_GAIN,
+    DEFAULT_MAX_STEP,
+    DEFAULT_V_GAIN,
+)
 from accesscam.mouse.base import DEFAULT_CLUTCH
 from accesscam.smoothing import DEFAULT_BETA, DEFAULT_D_CUTOFF, DEFAULT_MIN_CUTOFF
 from accesscam.tracker import (
@@ -86,6 +93,13 @@ class Config:
     invert_y: bool = False
     dead_zone: float = 0.0
     max_step: float = DEFAULT_MAX_STEP
+    # Pointer acceleration, off until accel_floor drops below 1.0. The floor is
+    # the fraction of full gain used while the marker is still: 0.35 cuts the
+    # resting wander to roughly a third, which is what makes holding a caret
+    # still for text selection workable. Tune it before touching the other two.
+    accel_floor: float = DEFAULT_ACCEL_FLOOR
+    accel_knee: float = DEFAULT_ACCEL_KNEE
+    accel_sharpness: float = DEFAULT_ACCEL_SHARPNESS
 
     # Cursor
     # How far past a hard edge the tracked position may run while the

@@ -146,6 +146,126 @@ def test_step_is_clamped_without_distorting_direction():
     assert dx == pytest.approx(dy)  # the 45-degree direction survives the clamp
 
 
+def accelerated(floor=0.2, knee=50.0, sharpness=2.0, **kwargs):
+    """A mapper with the curve on and both gains at 10, for readable arithmetic."""
+    settings = MapperSettings(
+        h_gain=10.0,
+        v_gain=10.0,
+        invert_x=False,
+        accel_floor=floor,
+        accel_knee=knee,
+        accel_sharpness=sharpness,
+        **kwargs,
+    )
+    return RelativeMapper(settings)
+
+
+def test_acceleration_is_off_by_default():
+    # Shipping it inert is the point: the same displacement must map the same
+    # way whether it took a frame or a second.
+    quick = RelativeMapper(MapperSettings(h_gain=10.0, v_gain=10.0, invert_x=False))
+    quick.update((100.0, 100.0), timestamp=0.0)
+
+    slow = RelativeMapper(MapperSettings(h_gain=10.0, v_gain=10.0, invert_x=False))
+    slow.update((100.0, 100.0), timestamp=0.0)
+
+    assert quick.update((105.0, 100.0), timestamp=0.01) == pytest.approx(
+        slow.update((105.0, 100.0), timestamp=0.2)
+    )
+
+
+def test_at_the_knee_the_gain_is_halfway_between_floor_and_full():
+    mapper = accelerated(floor=0.2, knee=50.0)
+    mapper.update((100.0, 100.0), timestamp=0.0)
+
+    # 5px in 0.1s is 50px/s - exactly the knee, so scale is 0.2 + 0.8/2 = 0.6.
+    dx, _ = mapper.update((105.0, 100.0), timestamp=0.1)
+
+    assert dx == pytest.approx(5.0 * 10.0 * 0.6)
+
+
+def test_slow_movement_is_damped_towards_the_floor():
+    mapper = accelerated(floor=0.2, knee=50.0)
+    mapper.update((100.0, 100.0), timestamp=0.0)
+
+    # 0.5px in 0.1s is 5px/s, well inside the positioning region.
+    dx, _ = mapper.update((100.5, 100.0), timestamp=0.1)
+
+    # Damped hard, but never discarded the way a dead zone would.
+    assert dx < 0.5 * 10.0 * 0.3
+    assert dx > 0.0
+
+
+def test_fast_movement_recovers_almost_all_of_the_gain():
+    mapper = accelerated(floor=0.2, knee=50.0)
+    mapper.update((100.0, 100.0), timestamp=0.0)
+
+    # 40px in 0.1s is 400px/s - a brisk sweep.
+    dx, _ = mapper.update((140.0, 100.0), timestamp=0.1)
+
+    assert dx == pytest.approx(40.0 * 10.0, rel=0.02)
+
+
+def test_acceleration_never_exceeds_the_flat_gain():
+    # max_step sits downstream, so a curve that overshot would start clipping
+    # movement the flat mapping passed through untouched.
+    mapper = accelerated(floor=0.2, knee=50.0)
+    mapper.update((100.0, 100.0), timestamp=0.0)
+
+    dx, _ = mapper.update((1000.0, 100.0), timestamp=0.001)
+
+    assert dx < 900.0 * 10.0
+
+
+def test_one_scale_serves_both_axes_so_a_diagonal_keeps_its_direction():
+    # Per-axis curves would scale 3 and 4 differently and bend the movement.
+    # Unlike the smoother's per-axis lag, a bent gain never recovers.
+    mapper = accelerated(floor=0.25, knee=50.0)
+    mapper.update((100.0, 100.0), timestamp=0.0)
+
+    dx, dy = mapper.update((103.0, 104.0), timestamp=0.1)
+
+    assert dy / dx == pytest.approx(4.0 / 3.0)
+
+
+def test_a_floor_of_one_reproduces_the_flat_mapping_exactly():
+    flat = RelativeMapper(MapperSettings(h_gain=10.0, v_gain=10.0, invert_x=False))
+    flat.update((100.0, 100.0), timestamp=0.0)
+
+    curved = accelerated(floor=1.0)
+    curved.update((100.0, 100.0), timestamp=0.0)
+
+    assert curved.update((103.0, 107.0), timestamp=0.1) == pytest.approx(
+        flat.update((103.0, 107.0), timestamp=0.1)
+    )
+
+
+def test_a_long_gap_is_clamped_rather_than_read_as_crawling():
+    # A dropped USB frame must not be taken at face value: 10px over a claimed
+    # 5s would read as 2px/s and damp a real movement to the floor. The timestep
+    # is clamped to a plausible frame interval first.
+    mapper = accelerated(floor=0.2, knee=50.0)
+    mapper.update((100.0, 100.0), timestamp=0.0)
+
+    dx, _ = mapper.update((110.0, 100.0), timestamp=5.0)
+
+    # Clamped to MAX_TIMESTEP: 10px / 0.2s = 50px/s, the knee, so scale is 0.6.
+    assert dx == pytest.approx(10.0 * 10.0 * 0.6)
+
+
+def test_reset_clears_the_timestamp_with_the_position():
+    # A stale timestamp across a pause would make the first frame back look
+    # impossibly slow and damp it to the floor.
+    mapper = accelerated(floor=0.2, knee=50.0)
+    mapper.update((100.0, 100.0), timestamp=0.0)
+    mapper.reset()
+
+    assert mapper.update((100.0, 100.0), timestamp=9.0) == (0.0, 0.0)
+
+    dx, _ = mapper.update((105.0, 100.0), timestamp=9.1)
+    assert dx == pytest.approx(5.0 * 10.0 * 0.6)
+
+
 def test_absolute_maps_frame_corners_onto_the_target_screen():
     mapper = AbsoluteMapper(frame_size=(640, 480), target=PRIMARY, invert_x=False)
 
