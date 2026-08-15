@@ -115,9 +115,12 @@ per machine, because the two installations have diverged enough that a single
 "starting point" is now misleading: they differ in screen count, in room
 lighting, and therefore in gain.
 
-Named profiles inside the app are an M3 feature (`profiles.py`). Until then this
-section is the profile store, and moving between machines means editing the
-JSON by hand.
+There is deliberately no profile feature to switch between these. `%APPDATA%` is
+already per-machine, so each installation keeps its own settings without help;
+what this section solves is carrying them between machines through the
+repository, which is a development concern rather than something a user of an
+installed app ever meets. Named profiles are an M5 item for shared institutional
+machines — see PROJECT_PLAN.md.
 
 ### Development PC — four screens, 7680×3600
 

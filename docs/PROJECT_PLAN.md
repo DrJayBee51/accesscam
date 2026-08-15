@@ -5,7 +5,10 @@
 Replace a failing, discontinued NaturalPoint SmartNav 4 with an open-source
 equivalent: an IR USB camera tracks a retroreflective dot worn by the user, and
 a desktop application converts that motion into mouse cursor movement with
-user-tunable gains, smoothing, and positioning mode, saved in named profiles.
+user-tunable gains, smoothing, and positioning mode.
+
+*Named profiles were part of this sentence until 2026-08-15, written before
+there was any usage to check it against. They moved to M5 — see there for why.*
 
 Platform order: **Windows → Linux → macOS.**
 
@@ -30,7 +33,7 @@ CameraSource ──► DotTracker ──► MotionMapper ──► Smoother ─�
                   centroid)      absolute)
                        │
                        ▼
-                 Qt UI: live preview, sliders, profile manager, tray icon
+                 Qt UI: live preview, sliders, tray icon
 ```
 
 Planned module layout (`src/accesscam/`):
@@ -42,9 +45,9 @@ Planned module layout (`src/accesscam/`):
 | `mapper.py` | Convert centroid motion to cursor motion. Relative mode: frame-to-frame delta × (H gain, V gain). Absolute mode: camera-space position → screen position through gains. Dead zone for micro-tremor |
 | `smoothing.py` | One Euro filter (speed-adaptive: heavy smoothing when still, low lag when moving). The UI smoothing slider maps to its cutoff parameters |
 | `mouse/` | Backend interface + `windows.py` (SendInput via ctypes). Later: `linux.py` (uinput/XTest), `macos.py` (Quartz) |
-| `profiles.py` | Named profiles as JSON in the platform config dir (`%APPDATA%\AccessCam` on Windows); fields: h_gain, v_gain, smoothing, mode, dead zone, camera settings |
+| `config.py` | Settings as flat JSON in the platform config dir (`%APPDATA%\AccessCam` on Windows); unknown keys ignored rather than fatal. Named profiles on top of this are M5 |
 | `hotkeys.py` | Global pause/resume hotkey (essential — the cursor must be parkable) |
-| `ui/` | PySide6: main window (preview + sliders + mode toggle + profile dropdown), tray icon, first-run camera picker |
+| `ui/` | PySide6: main window (preview + sliders + mode toggle), tray icon, first-run camera picker |
 
 **Latency budget:** at 30fps a frame arrives every 33ms; processing must stay
 trivially small next to that (blob detection on a thresholded frame is <1ms).
@@ -184,9 +187,14 @@ worth keeping for M3: ship the smallest thing that can be lived with, then live
 with it for a week before deciding what is wrong.
 
 **Per-machine settings have diverged** — different screen counts, different
-lighting, different gains — which makes named profiles (M3, `profiles.py`) a
-real need rather than a convenience. Both machines' settings are recorded in
-RUNNING.md in the meantime.
+lighting, different gains. Both machines' settings are recorded in RUNNING.md,
+one block each.
+
+This briefly looked like an argument for named profiles. It is not: `%APPDATA%`
+is already per-machine, so the two installations never collide. What actually
+hurts is carrying settings between a development PC and a work PC through a
+*repository*, which is a build-workflow problem and does not exist for anyone
+who installs the app once. See M5.
 
 The hotkey is a bare **F9** rather than a modifier chord because the fallback
 input when the cursor is unusable is a mouth-operated QuadStick with F9 already
@@ -213,10 +221,14 @@ Two things cost a long debugging detour and are worth not rediscovering:
 relative mode; the user can navigate their desktop comfortably for 15+ minutes,
 including moving between monitors.
 
-### M3 — Desktop UI & profiles, and the production housing (parallel)
+### M3 — Desktop UI and the production housing (parallel)
 **Software:** PySide6 window: live preview with dot overlay, H/V gain sliders,
-smoothing slider, relative/absolute toggle, profile save/load/switch, tray
-icon, start-minimized and launch-at-login options.
+smoothing slider, acceleration controls, relative/absolute toggle, tray icon,
+start-minimized and launch-at-login options.
+
+**No profile management here** — it moved to M5 on 2026-08-15. The single
+settings file is enough for a machine with one user, which is every
+installation that exists. See M5 for the reasoning and the design.
 
 **Hardware (SolidWorks) — production housing.** Supersedes the M1 slot-in
 prototype, now that development testing has settled the camera position, tilt
@@ -233,9 +245,9 @@ angle, and filter choice. Must add what the prototype deliberately skipped:
 - Rebuild in **MMGS** — the prototype inherits inch units from the traced
   SmartNav base, but nothing downstream of it needs to
 
-**Exit criteria:** all settings adjustable live and persisted in named
-profiles; app runs from the tray. Housing survives a day of normal use without
-drifting out of aim, and the camera is captive.
+**Exit criteria:** all settings adjustable live and persisted; app runs from the
+tray. Housing survives a day of normal use without drifting out of aim, and the
+camera is captive.
 
 ### M4 — v1.0 release (Windows)
 PyInstaller one-folder build, versioned GitHub Release, install/setup guide
@@ -244,7 +256,69 @@ with photos, printable STL + filter/dot instructions published in `hardware/`.
 ### M5 — v2 features
 Dwell clicking (dwell time, click type, visual countdown), calibration wizard,
 configurable hotkeys, optional gravity/precision mode near targets. (Basic
-multi-monitor handling moved up to M2 — see there.)
+multi-monitor handling moved up to M2 — see there. Note that the M2
+acceleration curve may have already covered most of what a precision mode was
+for, so re-examine that item before building it.)
+
+#### Named profiles — deferred here from M3 (2026-08-15)
+
+**Why they were deferred.** Profiles were in the goal statement from
+2026-08-08, written before there was any usage to check them against. Three
+things emerged once there was:
+
+- **The user of the device this replaces never used the feature.** That is the
+  best evidence available, and it outweighs speculation.
+- **Per-machine settings need no profiles.** `%APPDATA%` is already per-machine,
+  so two installations are separate by construction. The pain that made profiles
+  look urgent was syncing a *repository* between a development PC and a work PC:
+  a build-workflow problem, not a product one.
+- **Profiles have no user until M4 ships.** Their justification is shared
+  institutional machines, and no institution can install this before there is
+  an installer.
+
+**Why they are not cancelled.** The testing centre at the user's college ran
+SmartNav on a **single shared desktop login**, which is the one case Windows
+user accounts do not already solve. Rehab centres and assessment stations are
+the same shape. Real, but institutional, and worth building when an institution
+asks rather than in anticipation.
+
+**The constraint that case imposes — this is the part worth not rediscovering.**
+At a testing centre a proctor sets up for someone who cannot use the mouse yet.
+A profile picker operated *with the cursor* is therefore useless to the person
+who needs it: selecting the profile requires the working cursor that selecting
+the profile is meant to provide. Profile selection has to happen at **launch**,
+not inside the settings window — a `--profile` flag, a per-user desktop shortcut
+a proctor configures once, or a first-screen picker reachable from the keyboard
+or a QuadStick. Same single-key-reachable reasoning that made the pause hotkey a
+bare F9.
+
+**Storage design, already worked out.** A profile is just a named config file,
+so this is a naming and selection layer rather than a new schema — `Config.load`
+and `Config.save` already take an optional path:
+
+```
+%APPDATA%\AccessCam\
+  config.json              <- untouched; unchanged behaviour when no profiles exist
+  active.json              <- {"profile": "work"}
+  profiles\<name>.json
+```
+
+Resolution order, first match wins:
+`--config PATH` → `--profile NAME` → `active.json` → `config.json` → defaults.
+
+Purely additive, with no automatic migration: silently rewriting the config of a
+tool someone depends on for computer access is a bad trade against the risk in
+the table below. Opting in means running `--save-profile` once.
+
+Keep profiles **flat** — every key in every file, identical to `Config` — and
+document `device` as the one value to fix when copying between machines. The
+alternative, splitting machine-level keys into their own file, invents a second
+schema and a merge step to solve one integer.
+
+Profile names become filenames, so validate them: `[A-Za-z0-9_-]`, 1–64
+characters, and reject the Windows reserved device names (`con`, `prn`, `aux`,
+`nul`, `com1`–`com9`, `lpt1`–`lpt9`) case-insensitively. `con` passes a naive
+character check and then fails at `open()` in a way that is hard to diagnose.
 
 ### M6 — Linux port
 `uinput`-based mouse backend (evdev), packaging (AppImage or Flatpak),
