@@ -107,43 +107,81 @@ Expect to want a different gain immediately. Edit `h_gain` and `v_gain` in the
 config: higher means the cursor travels further for the same head movement.
 The defaults of 31 and 32 are calibrated for one 2560x1440 screen.
 
-## A known-good starting point
+## Known-good settings, per machine
 
 The config lives in `%APPDATA%\AccessCam\config.json` and is **not** in the
-repository, so it does not travel with a clone. These are the values tuned on
-the development machine on 2026-08-10, against an Arducam on a monitor-top
-mount at normal seating distance:
+repository, so it does not travel with a clone. Recorded here instead, one block
+per machine, because the two installations have diverged enough that a single
+"starting point" is now misleading: they differ in screen count, in room
+lighting, and therefore in gain.
+
+Named profiles inside the app are an M3 feature (`profiles.py`). Until then this
+section is the profile store, and moving between machines means editing the
+JSON by hand.
+
+### Development PC — four screens, 7680×3600
+
+Tuned 2026-08-10, retuned 2026-08-15 when pointer acceleration landed:
 
 ```json
 {
   "device": 1,
   "exposure": -9,
   "threshold": 200,
-  "h_gain": 100.0,
-  "v_gain": 70.0,
+  "h_gain": 120.0,
+  "v_gain": 90.0,
   "min_cutoff": 0.15,
   "beta": 0.4,
   "max_step": 2500.0,
+  "accel_floor": 0.35,
+  "accel_knee": 25.0,
+  "accel_sharpness": 3.0,
   "hotkey": "f9"
 }
 ```
 
-Anything omitted falls back to its default, so this is a complete file as it
-stands. Two caveats when copying it to another machine:
+The gains went **up** — 100→120 and 70→90 — in the same change that added the
+curve, and that is the point rather than a coincidence: damping the gain at rest
+bought enough precision to afford a faster pointer everywhere else. Tuning them
+apart from the curve would have found neither.
 
-- **`device` will differ.** Run `--list-devices` first.
-- **The gains depend on how far the camera sits from your head**, since they
-  are calibrated against how far the marker travels across the sensor. If the
-  mount geometry is the same, they should carry over; if the cursor feels wrong
-  in the first minute, gain is the thing to change.
-- **No region of interest is set here**, so the whole frame is searched. If a
-  bright window competes with the marker in your room, add one — and expect to
-  revisit the gains afterwards, since a box changes how much of the frame your
-  head crosses.
+No region of interest is set here; the whole frame is searched.
 
-`v_gain` being lower than `h_gain` is deliberate — vertical head movement has
-less comfortable range than horizontal, so it needs less amplification per
-pixel to cover its axis.
+### Work PC — three screens, 2560×1440 each
+
+The daily driver, and where four days of full-day use surfaced the jitter
+problem the curve fixes. A region of interest is set here because a daylit
+office window rivalled the marker:
+
+```json
+{
+  "roi_x": 257,
+  "roi_y": 237,
+  "roi_w": 268,
+  "roi_h": 233
+}
+```
+
+<!-- TODO: gains, exposure, threshold and device for this machine are not
+     recorded yet. Copy them from its config.json rather than assuming the
+     development PC's carry over - the ROI alone changes how much of the frame
+     the head crosses, and the rooms are lit differently. -->
+
+### Notes that apply to both
+
+Anything omitted falls back to its default, so each block above is a complete
+file as it stands.
+
+- **`device` will differ.** Run `--list-devices` on each machine.
+- **The gains depend on how far the camera sits from your head**, since they are
+  calibrated against how far the marker travels across the sensor. If the mount
+  geometry matches they should carry over; if the cursor feels wrong in the
+  first minute, gain is the thing to change.
+- **A region of interest changes the gains.** The box shrinks how much of the
+  frame your head crosses, so gains tuned before setting one feel faster after.
+- **`v_gain` lower than `h_gain` is deliberate** — vertical head movement has
+  less comfortable range than horizontal, so it needs less amplification per
+  pixel to cover its axis.
 
 ## Safety
 

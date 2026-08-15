@@ -106,7 +106,7 @@ in daylight and lamplight, with jitter measured. All met — 29.3–29.5fps acro
 every run, tracked under lamplight at −7 and daylight at −9 with no exposure
 clamping, jitter measured in both.
 
-### M2 — Cursor control engine
+### M2 — Cursor control engine ✅ (2026-08-15)
 Mapper, One Euro smoothing, Windows SendInput backend, pause/resume hotkey,
 config file (no UI yet — tune via config + hotkey reload).
 
@@ -166,9 +166,27 @@ less far than slow ones over the same ground, the cursor accumulated movement
 into screen regions belonging to no monitor, and hover-driven UI needs
 AccessCam run as administrator.
 
-**Not yet signed off.** The exit criterion is a comfortable 15+ minutes of real
-work, and that has not happened yet — the first full day of use is the test.
-Treat reliability feedback from it as the priority over anything new.
+**Signed off (2026-08-15).** The exit criterion was a comfortable 15+ minutes of
+real work; what actually happened was **four consecutive days of 8+ hours** on
+the work PC, as the daily driver, across three screens. That is the criterion by
+two orders of magnitude. Two problems came out of it, both now fixed:
+
+- **A daylit office window rivalled the marker** and stole the track. Neither
+  shape nor brightness filtering can reject a window, so blobs outside an opt-in
+  region of interest are now excluded entirely.
+- **Jitter at slow speeds was tiring over a full day**, and made holding a caret
+  still for text selection hard. The smoother was already at its floor, so the
+  fix had to be in the gain: it is now scaled down while the marker is nearly
+  still. See *Holding the cursor still* in RUNNING.md.
+
+Both were found by use and neither was predictable from the bench. The pattern
+worth keeping for M3: ship the smallest thing that can be lived with, then live
+with it for a week before deciding what is wrong.
+
+**Per-machine settings have diverged** — different screen counts, different
+lighting, different gains — which makes named profiles (M3, `profiles.py`) a
+real need rather than a convenience. Both machines' settings are recorded in
+RUNNING.md in the meantime.
 
 The hotkey is a bare **F9** rather than a modifier chord because the fallback
 input when the cursor is unusable is a mouth-operated QuadStick with F9 already
