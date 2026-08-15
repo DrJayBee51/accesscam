@@ -19,6 +19,12 @@ Keys:
     j         measure jitter - hold still for a couple of seconds
     r         reset the travel-range measurement
     s         save a snapshot of the current frame
+    c         clear the region of interest (search the whole frame)
+    w         write exposure, threshold and ROI to the config file
+
+Drag with the left mouse button to draw a region of interest: only blobs
+inside it are tracked, which excludes bright windows or lamps at the frame
+edges that would otherwise steal the marker.
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ from pathlib import Path
 import cv2
 
 from accesscam.camera import CameraError, CameraSettings, CameraSource, list_devices
+from accesscam.config import Config
 from accesscam.tracker import DEFAULT_THRESHOLD, DotTracker
 
 JITTER_SAMPLES = 120
@@ -52,6 +59,7 @@ BACKENDS: dict[str, int | None] = {
 HUD_COLOUR = (255, 255, 255)
 MARKER_COLOUR = (0, 255, 0)
 ALERT_COLOUR = (0, 165, 255)
+ROI_COLOUR = (0, 0, 255)
 
 
 @dataclass
@@ -108,6 +116,63 @@ class JitterMeasurement:
         return len(self.xs)
 
 
+@dataclass
+class RoiSelector:
+    """Lets the user drag a region-of-interest box on the preview window."""
+
+    box: tuple[int, int, int, int] | None = None
+    _drag_start: tuple[int, int] | None = None
+    _drag_now: tuple[int, int] | None = None
+
+    def on_mouse(self, event, x: int, y: int, flags, param) -> None:
+        if event == cv2.EVENT_LBUTTONDOWN:
+            self._drag_start = (x, y)
+            self._drag_now = (x, y)
+        elif event == cv2.EVENT_MOUSEMOVE and self._drag_start is not None:
+            self._drag_now = (x, y)
+        elif event == cv2.EVENT_LBUTTONUP and self._drag_start is not None:
+            self.box = self._normalise(self._drag_start, (x, y))
+            self._drag_start = None
+            self._drag_now = None
+
+    def clear(self) -> None:
+        self.box = None
+
+    @staticmethod
+    def _normalise(a: tuple[int, int], b: tuple[int, int]) -> tuple[int, int, int, int] | None:
+        x0, x1 = sorted((a[0], b[0]))
+        y0, y1 = sorted((a[1], b[1]))
+        w, h = x1 - x0, y1 - y0
+        # A click without a drag is not a box; ignore it rather than creating a
+        # zero-area ROI that would reject every blob.
+        if w < 5 or h < 5:
+            return None
+        return (x0, y0, w, h)
+
+    @property
+    def pending(self) -> tuple[int, int, int, int] | None:
+        """The box being dragged right now, for live drawing."""
+        if self._drag_start is None or self._drag_now is None:
+            return None
+        return self._normalise(self._drag_start, self._drag_now)
+
+
+def draw_roi(frame, roi: RoiSelector) -> None:
+    """Draw the region of interest and dim everything outside it."""
+    box = roi.box or roi.pending
+    if box is None:
+        return
+    x, y, w, h = box
+    # A committed box dims the excluded area so it is obvious what is being
+    # ignored; a box still being dragged is just outlined.
+    if roi.box is not None:
+        shade = frame.copy()
+        shade[:] = 0
+        shade[y : y + h, x : x + w] = frame[y : y + h, x : x + w]
+        cv2.addWeighted(shade, 0.7, frame, 0.3, 0.0, frame)
+    cv2.rectangle(frame, (x, y), (x + w, y + h), ROI_COLOUR, 1)
+
+
 def draw_overlay(
     frame,
     result,
@@ -115,13 +180,21 @@ def draw_overlay(
     tracker: DotTracker,
     ranges: RangeTracker,
     jitter: JitterMeasurement,
+    roi: RoiSelector,
 ) -> None:
+    draw_roi(frame, roi)
+
     if result.found:
         x, y = round(result.x), round(result.y)
         cv2.drawContours(frame, [result.contour], -1, MARKER_COLOUR, 1)
         cv2.drawMarker(frame, (x, y), MARKER_COLOUR, cv2.MARKER_CROSS, 20, 1)
 
     span_x, span_y = ranges.span
+    roi_text = (
+        f"{roi.box[2]}x{roi.box[3]} at ({roi.box[0]},{roi.box[1]})"
+        if roi.box is not None
+        else "off - drag to set"
+    )
     lines = [
         (
             f"fps {camera.measured_fps:5.1f}   exposure {camera.exposure:3d} "
@@ -134,6 +207,7 @@ def draw_overlay(
             else "dot  NOT FOUND"
         ),
         f"travel  x {span_x:6.1f} px   y {span_y:6.1f} px",
+        f"roi  {roi_text}",
     ]
     if jitter.active:
         lines.append(f"measuring jitter... {jitter.progress}/{JITTER_SAMPLES} - hold still")
@@ -176,6 +250,24 @@ def print_summary(
         print("        comfortable range with 'r' pressed first to calibrate gains.")
 
 
+def save_to_config(camera: CameraSource, tracker: DotTracker, roi: RoiSelector) -> None:
+    """Write the values tuned here back to the user's config, leaving the rest.
+
+    Loads the existing config first so every other setting - gains, smoothing,
+    device - survives, then overwrites only what this tool tunes.
+    """
+    config = Config.load()
+    config.exposure = camera.exposure
+    config.threshold = tracker.threshold
+    if roi.box is not None:
+        config.roi_x, config.roi_y, config.roi_w, config.roi_h = roi.box
+    else:
+        config.roi_x = config.roi_y = config.roi_w = config.roi_h = 0
+    path = config.save()
+    where = f"roi {roi.box}" if roi.box is not None else "roi off"
+    print(f"wrote exposure {config.exposure}, threshold {config.threshold}, {where} to {path}")
+
+
 def run(args: argparse.Namespace) -> int:
     settings = CameraSettings(
         device=args.device,
@@ -187,6 +279,7 @@ def run(args: argparse.Namespace) -> int:
     tracker = DotTracker(threshold=args.threshold)
     ranges = RangeTracker()
     jitter = JitterMeasurement()
+    roi = RoiSelector()
     auto_exposure = False
 
     try:
@@ -202,6 +295,7 @@ def run(args: argparse.Namespace) -> int:
 
     window = "AccessCam bring-up"
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    cv2.setMouseCallback(window, roi.on_mouse)
 
     try:
         while True:
@@ -211,13 +305,14 @@ def run(args: argparse.Namespace) -> int:
                 # failure surfaces as a frozen preview.
                 continue
 
+            tracker.roi = roi.box
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             result = tracker.process(gray)
             if result.found:
                 ranges.update(result.x, result.y)
                 jitter.add(result.x, result.y)
 
-            draw_overlay(frame, result, camera, tracker, ranges, jitter)
+            draw_overlay(frame, result, camera, tracker, ranges, jitter, roi)
             cv2.imshow(window, frame)
 
             key = cv2.waitKey(1) & 0xFF
@@ -249,6 +344,11 @@ def run(args: argparse.Namespace) -> int:
                 path = SNAPSHOT_DIR / f"snapshot-{time.strftime('%Y%m%d-%H%M%S')}.png"
                 cv2.imwrite(str(path), frame)
                 print(f"saved {path}")
+            elif key == ord("c"):
+                roi.clear()
+                print("roi cleared")
+            elif key == ord("w"):
+                save_to_config(camera, tracker, roi)
     finally:
         print_summary(camera, tracker, ranges, jitter)
         camera.close()

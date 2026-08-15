@@ -136,6 +136,10 @@ stands. Two caveats when copying it to another machine:
   are calibrated against how far the marker travels across the sensor. If the
   mount geometry is the same, they should carry over; if the cursor feels wrong
   in the first minute, gain is the thing to change.
+- **No region of interest is set here**, so the whole frame is searched. If a
+  bright window competes with the marker in your room, add one — and expect to
+  revisit the gains afterwards, since a box changes how much of the frame your
+  head crosses.
 
 `v_gain` being lower than `h_gain` is deliberate — vertical head movement has
 less comfortable range than horizontal, so it needs less amplification per
@@ -162,10 +166,78 @@ stops the program, and closing the terminal window kills it outright.
 | Marker lost in a bright room | `exposure` | down to -10 |
 | Something else gets tracked | `threshold` | up toward 255 |
 | Cursor jumps to a bright object | `max_area` | down |
+| A daylit window keeps stealing it | `roi_*` | draw a box around yourself |
 
 Shorter exposure improves precision as well as contrast: the sub-pixel centroid
 needs a brightness gradient across the blob, and a saturated marker is a flat
 plateau. Prefer the shortest exposure that still holds the dot.
+
+## When something bright keeps stealing the track
+
+A window in daylight images as bright as the marker, and neither the shape nor
+the brightness filter can reject it — a window is neither dim nor elongated. No
+exposure or threshold will separate them either, because the offender is as
+bright as the thing you are looking for.
+
+Exclude it by area instead. Only blobs whose centre falls inside the region of
+interest are considered, so a box drawn around yourself removes anything at the
+frame edges:
+
+```json
+{
+  "roi_x": 257,
+  "roi_y": 237,
+  "roi_w": 268,
+  "roi_h": 233
+}
+```
+
+All four at `0` — the default — searches the whole frame. `roi_w` or `roi_h` of
+`0` counts as disabled rather than as a box that rejects everything.
+
+Two things to know before relying on it. The box is fixed **in the camera
+frame**, not to you: move your chair and you can leave it, and tracking then
+stops entirely rather than degrading. That is a worse failure than a stolen
+track, which is why it is off unless you ask for it. And the box shrinks how
+much of the frame your head crosses, so gains tuned before setting one will
+feel faster afterwards.
+
+Pick the box visually rather than guessing pixels — see below.
+
+## Tuning against the live preview
+
+`tools/camera_bringup.py` is the M1 bring-up tool, and it stays useful long
+after bring-up: it shows the camera with the tracked blob outlined, so you can
+watch what the tracker is actually choosing while you change settings. It never
+touches the cursor.
+
+```powershell
+.venv\Scripts\python.exe tools\camera_bringup.py --device 1
+```
+
+The HUD reports fps, exposure, threshold, the marker's position, area and
+brightness — or `dot NOT FOUND` — plus travel range and the current box.
+
+| Key | Effect |
+|---|---|
+| drag | draw a region of interest; outside it dims |
+| `c` | clear the region of interest |
+| `w` | write exposure, threshold and the box to the config |
+| `[` / `]` | lower / raise `threshold` |
+| `-` / `=` | shorten / lengthen `exposure` |
+| `j` | measure jitter — hold still for a couple of seconds |
+| `r` | reset the travel-range measurement |
+| `s` | save a snapshot to `bringup/` |
+| `a` | toggle auto exposure, for comparison only |
+| `q` | quit and print a summary |
+
+`w` loads the existing config before writing, so gains, smoothing and
+everything else it does not tune survive untouched. Note the keys go to the
+preview window, not the terminal — click it first.
+
+Travel range is worth watching while you are in here: it accumulates only while
+the marker is found, so a figure that stays near zero means the track is sitting
+on something stationary rather than on you.
 
 ## Known gotchas
 

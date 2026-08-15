@@ -70,6 +70,21 @@ def test_saved_file_is_human_editable(tmp_path):
     assert list(data) == sorted(data)
 
 
+def test_roi_is_none_when_unset():
+    assert Config().roi() is None
+
+
+def test_roi_returns_the_box_when_sized():
+    config = Config(roi_x=10, roi_y=20, roi_w=100, roi_h=80)
+    assert config.roi() == (10, 20, 100, 80)
+
+
+def test_roi_is_none_when_width_or_height_is_zero():
+    # A degenerate box would reject every blob; treat it as disabled instead.
+    assert Config(roi_x=10, roi_y=20, roi_w=0, roi_h=80).roi() is None
+    assert Config(roi_x=10, roi_y=20, roi_w=100, roi_h=0).roi() is None
+
+
 def test_config_path_is_under_the_config_dir():
     assert config_path().parent == config_dir()
     assert config_path().name == "config.json"
