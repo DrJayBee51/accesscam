@@ -18,12 +18,10 @@ import cv2
 
 from accesscam.camera import CameraError, CameraSettings, CameraSource
 from accesscam.config import Config, config_path
-from accesscam.hotkeys import PauseController, create_listener, parse_hotkey
-from accesscam.mapper import MapperSettings, RelativeMapper
+from accesscam.engine import Engine
+from accesscam.hotkeys import create_listener, parse_hotkey
 from accesscam.mouse import CursorController, create_backend
 from accesscam.mouse.fake import RecordingMouse
-from accesscam.smoothing import PointSmoother, SmoothingSettings
-from accesscam.tracker import DotTracker
 
 BACKENDS = {
     "auto": None,
@@ -108,31 +106,6 @@ def warn_if_not_elevated() -> None:
 
 
 def run(config: Config, dry_run: bool = False) -> int:
-    tracker = DotTracker(
-        threshold=config.threshold,
-        min_area=config.min_area,
-        max_area=config.max_area,
-        max_jump=config.max_jump,
-        min_circularity=config.min_circularity,
-        roi=config.roi(),
-    )
-    smoother = PointSmoother(
-        SmoothingSettings(min_cutoff=config.min_cutoff, beta=config.beta, d_cutoff=config.d_cutoff)
-    )
-    mapper = RelativeMapper(
-        MapperSettings(
-            h_gain=config.h_gain,
-            v_gain=config.v_gain,
-            invert_x=config.invert_x,
-            invert_y=config.invert_y,
-            dead_zone=config.dead_zone,
-            max_step=config.max_step,
-            accel_floor=config.accel_floor,
-            accel_knee=config.accel_knee,
-            accel_sharpness=config.accel_sharpness,
-        )
-    )
-
     backend = RecordingMouse() if dry_run else create_backend()
     cursor = CursorController(backend, clutch=config.clutch)
 
@@ -141,6 +114,8 @@ def run(config: Config, dry_run: bool = False) -> int:
     except CameraError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+    engine = Engine(config, camera, cursor)
 
     fmt = camera.actual_format()
     print(
@@ -165,15 +140,11 @@ def run(config: Config, dry_run: bool = False) -> int:
 
     warn_if_not_elevated()
 
-    pause = PauseController()
+    pause = engine.pause
 
     def announce(paused: bool) -> None:
-        # Re-adopt the real cursor position on resume: it may have been moved
-        # by other means while we were paused, and the mapper must not carry a
-        # stale position across the gap.
-        if not paused:
-            cursor.sync()
-            mapper.reset()
+        # Re-adopting the cursor position on resume is the engine's business
+        # now, and it subscribed first, so it has already happened here.
         print(f"\n>>> {'PAUSED' if paused else 'ACTIVE'}")
 
     pause.on_change(announce)
@@ -193,47 +164,26 @@ def run(config: Config, dry_run: bool = False) -> int:
         print("dry run: the real cursor will not move")
     print("Ctrl+C to quit.\n")
 
-    frames = 0
-    lost = 0
-    last_status = time.monotonic()
+    engine.start()
 
     try:
-        while True:
-            frame = camera.read()
-            if frame is None:
-                continue
-            frames += 1
-
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            result = tracker.process(gray)
-            position = result.position if result.found else None
-            if position is None:
-                lost += 1
-
-            smoothed = smoother.update(position)
-
-            if pause.active:
-                cursor.move_by(*mapper.update(smoothed))
-            else:
-                # Keep the mapper from carrying a delta across the pause.
-                mapper.reset()
-
-            now = time.monotonic()
-            if now - last_status >= STATUS_INTERVAL:
-                state = "ACTIVE" if pause.active else "paused"
-                tracked = "tracking" if result.found else "NO MARKER"
-                print(
-                    f"\r{state:6s} | {camera.measured_fps:4.1f}fps | {tracked:9s} | "
-                    f"lost {100 * lost / max(frames, 1):3.0f}% | "
-                    f"peak {mapper.peak_demand:5.0f}px/frame | "
-                    f"clipped {100 * mapper.clipped / max(mapper.steps, 1):3.0f}%",
-                    end="",
-                    flush=True,
-                )
-                last_status = now
+        while engine.running:
+            time.sleep(STATUS_INTERVAL)
+            status = engine.status()
+            state = "paused" if status.paused else "ACTIVE"
+            tracked = "tracking" if status.tracking else "NO MARKER"
+            print(
+                f"\r{state:6s} | {status.fps:4.1f}fps | {tracked:9s} | "
+                f"lost {100 * status.lost_fraction:3.0f}% | "
+                f"peak {status.peak_demand:5.0f}px/frame | "
+                f"clipped {100 * status.clipped_fraction:3.0f}%",
+                end="",
+                flush=True,
+            )
     except KeyboardInterrupt:
         print("\nstopping.")
     finally:
+        engine.stop()
         listener.stop()
         camera.close()
 

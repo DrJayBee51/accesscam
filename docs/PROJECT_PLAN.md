@@ -44,6 +44,7 @@ Planned module layout (`src/accesscam/`):
 | `tracker.py` | Threshold + contour/blob detection; return dot centroid (sub-pixel) and confidence; handle "dot lost" |
 | `mapper.py` | Convert centroid motion to cursor motion. Relative mode: frame-to-frame delta × (H gain, V gain). Absolute mode: camera-space position → screen position through gains. Dead zone for micro-tremor |
 | `smoothing.py` | One Euro filter (speed-adaptive: heavy smoothing when still, low lag when moving). The UI smoothing slider maps to its cutoff parameters |
+| `engine.py` | Owns the pipeline and runs it on its own thread; publishes a status snapshot and the latest frame, and retunes live via `apply()`. Front ends observe it rather than containing it — a Qt event loop has to own the main thread, so the pipeline cannot |
 | `mouse/` | Backend interface + `windows.py` (SendInput via ctypes). Later: `linux.py` (uinput/XTest), `macos.py` (Quartz) |
 | `config.py` | Settings as flat JSON in the platform config dir (`%APPDATA%\AccessCam` on Windows); unknown keys ignored rather than fatal. Named profiles on top of this are M5 |
 | `hotkeys.py` | Global pause/resume hotkey (essential — the cursor must be parkable) |
