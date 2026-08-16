@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -156,7 +156,6 @@ class MainWindow(QMainWindow):
         self._speed = 0.0
 
         self.setWindowTitle("AccessCam")
-        self.resize(1080, 720)
         self.setStyleSheet(STYLESHEET)
 
         root = QWidget()
@@ -172,6 +171,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self._load_into_controls()
+        self._lock_size()
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._refresh)
@@ -189,20 +189,18 @@ class MainWindow(QMainWindow):
         column.setSpacing(16)
         for widget in widgets:
             column.addWidget(widget)
-
-        # The card hugs its content, with the spare height below it rather than
-        # inside it, so it ends at the same kind of edge the curve card does
-        # instead of stretching to the bottom of the tab.
-        holder = QWidget()
-        outer = QVBoxLayout(holder)
-        outer.setContentsMargins(0, 0, 8, 0)
-        outer.setSpacing(0)
-        outer.addWidget(inner)
-        outer.addStretch(1)
+        # Spare height inside the card, below the content. The card itself
+        # stretches to fill the tab so it matches the card beside it; without
+        # this the extra space would be shared out between the controls and
+        # space them apart instead.
+        column.addStretch(1)
 
         area = QScrollArea()
         area.setWidgetResizable(True)
-        area.setWidget(holder)
+        area.setWidget(inner)
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        area.setFrameShape(QFrame.Shape.NoFrame)
+        area.setMinimumHeight(inner.sizeHint().height())
         return area
 
     def _tuner(self, *args, **kwargs) -> Tuner:
@@ -224,7 +222,11 @@ class MainWindow(QMainWindow):
         preview_layout.setContentsMargins(14, 12, 14, 14)
         preview_layout.setSpacing(8)
         preview_layout.addWidget(heading("What the tracker sees"))
-        preview_layout.addWidget(self.preview)
+        # Centred in whatever height the card ends up with, so it sits opposite
+        # the middle of the controls rather than clinging to the heading.
+        preview_layout.addStretch(1)
+        preview_layout.addWidget(self.preview, 0, Qt.AlignmentFlag.AlignHCenter)
+        preview_layout.addStretch(1)
 
         controls = self._scrolling(
             [
@@ -269,13 +271,35 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(12, 12, 12, 12)
         row.setSpacing(16)
 
-        left = QVBoxLayout()
-        left.setSpacing(10)
-        left.addWidget(preview_card)
-        left.addStretch(1)
-        row.addLayout(left)
+        row.addWidget(preview_card)
         row.addWidget(controls, 1)
         return page
+
+    def _lock_size(self) -> None:
+        """Fix the window at the size its content needs.
+
+        Everything is visible at that size on both tabs, so resizing could only
+        add empty space. Fixing it also means the controls never move between
+        sessions, which matters more here than usual: hitting a target with a
+        head-tracked cursor is far easier when the target is where it was last
+        time.
+
+        Still clamped to the screen. The preview scales with the monitor, so on
+        a small display the natural size could otherwise exceed what is there
+        to show it on.
+        """
+        self.tabs.setCurrentIndex(1)  # size for the taller tab, not the first
+        needed = self.sizeHint()
+        self.tabs.setCurrentIndex(0)
+        needed = needed.expandedTo(self.sizeHint())
+
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            needed.setWidth(min(needed.width(), available.width() - 60))
+            needed.setHeight(min(needed.height(), available.height() - 90))
+
+        self.setFixedSize(needed)
 
     def _size_preview(self) -> None:
         """Fix the preview to a share of the monitor's height.
@@ -342,6 +366,7 @@ class MainWindow(QMainWindow):
             ),
         ):
             curve_layout.addWidget(tuner)
+        curve_layout.addStretch(1)
 
         controls = self._scrolling(
             [
@@ -390,11 +415,7 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(12, 12, 12, 12)
         row.setSpacing(14)
 
-        left = QVBoxLayout()
-        left.setSpacing(12)
-        left.addWidget(curve_card)
-        left.addStretch(1)
-        row.addLayout(left, 1)
+        row.addWidget(curve_card, 1)
         row.addWidget(controls)
         return page
 
