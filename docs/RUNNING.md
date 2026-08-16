@@ -170,6 +170,28 @@ office window rivalled the marker:
      development PC's carry over - the ROI alone changes how much of the frame
      the head crosses, and the rooms are lit differently. -->
 
+Known in use there, from M2: `h_gain` 100, `v_gain` 70, `min_cutoff` 0.15,
+`beta` 0.4, `max_step` 2500. **Paste that machine's whole `config.json` in here
+on the next visit** — the TODO above has outlived two sessions, and it is thirty
+seconds at that desk against guesswork from this one.
+
+#### Coming from the M2 build
+
+That machine last pulled on 2026-08-10 and is a long way back. Three things
+change on the first run after an update:
+
+- **`--ui` is what opens the window.** Without it AccessCam still runs exactly
+  as it did, headless with F9. Nothing about the old command breaks.
+- **Acceleration is off in a config written before it existed**, since
+  `accel_floor` defaults to 1.0 and a missing key takes its default. To try it,
+  set `accel_floor` to 0.35 and leave the gains alone at first. On the
+  development PC the curve is what made room to raise them; whether that
+  transfers to three screens and a different mount distance is exactly what a
+  workday answers.
+- **The window is live** — the acceleration floor, the gains and the region can
+  all be dragged while the cursor keeps working, so this no longer costs a
+  restart per guess.
+
 ### Notes that apply to both
 
 Anything omitted falls back to its default, so each block above is a complete
