@@ -59,7 +59,10 @@ class HelpButton(QToolButton):
         self.setText("?")
         self.setFixedSize(20, 20)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # Reachable by Tab, but a click does not leave it focused - otherwise
+        # the focus ring stays lit after the popup has been dismissed and reads
+        # as though the button is still doing something.
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.setAccessibleName(f"What does {label} do?" if label else "Help")
         self._text = text
         self.clicked.connect(self._open)

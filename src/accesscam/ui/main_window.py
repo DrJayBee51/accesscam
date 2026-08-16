@@ -22,6 +22,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QFrame,
     QHBoxLayout,
@@ -177,6 +178,7 @@ class MainWindow(QMainWindow):
 
         self._load_into_controls()
         self._match_card_widths()
+        self._tidy_button_focus()
         self._lock_size()
 
         self.timer = QTimer(self)
@@ -282,6 +284,18 @@ class MainWindow(QMainWindow):
         row.addWidget(controls)
         row.addStretch(1)
         return page
+
+    def _tidy_button_focus(self) -> None:
+        """Let buttons take focus from Tab but not from a click.
+
+        A click otherwise leaves the focus ring lit on whatever was last
+        pressed, which reads as "this control is still doing something" long
+        after it has finished. Sliders are deliberately left alone: focusing one
+        by clicking it is how you then drive it with the arrow keys, and there
+        the lit handle is telling the truth about which slider they will move.
+        """
+        for button in self.findChildren(QAbstractButton):
+            button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
 
     def _match_card_widths(self) -> None:
         """Give the two tabs the same column widths.
