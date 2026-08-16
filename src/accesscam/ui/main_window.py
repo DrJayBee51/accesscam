@@ -51,6 +51,9 @@ PREVIEW_SHARE = 1 / 4
 
 STYLESHEET = """
 QWidget { background: #17171a; color: #e4e4e8; font-size: 13px; }
+/* Labels take the surface behind them, or every one inside a card paints a
+   page-coloured rectangle over it. */
+QLabel { background: transparent; }
 QTabWidget::pane { border: 1px solid #2e2e34; border-radius: 6px; top: -1px; }
 QTabBar::tab {
     background: #1e1e22; color: #a8a8b0; padding: 9px 20px;
@@ -163,7 +166,7 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_camera_tab(), "Camera && Marker")
-        self.tabs.addTab(self._build_movement_tab(), "Cursor movement")
+        self.tabs.addTab(self._build_movement_tab(), "Cursor Movement")
         layout.addWidget(self.tabs, 1)
         layout.addWidget(self._build_footer())
         self.setCentralWidget(root)
@@ -269,45 +272,61 @@ class MainWindow(QMainWindow):
         self._tuners = getattr(self, "_tuners", [])
 
         self.curve = CurveWidget()
+
+        # The acceleration controls live inside the plot's own card, directly
+        # under it. They are the three values that draw the curve, so putting
+        # them across the page from it meant looking in one place while
+        # changing something in another.
         curve_card = QFrame()
         curve_card.setObjectName("card")
         curve_layout = QVBoxLayout(curve_card)
-        curve_layout.setContentsMargins(12, 10, 12, 8)
+        curve_layout.setContentsMargins(14, 12, 14, 14)
         curve_layout.setSpacing(6)
         curve_layout.addWidget(heading("Gain against marker speed"))
         curve_layout.addWidget(self.curve)
-        self.curve_note = QLabel()
-        self.curve_note.setObjectName("tunerHelp")
-        curve_layout.addWidget(self.curve_note)
+        curve_layout.addSpacing(10)
+        curve_layout.addWidget(heading("Acceleration"))
+        curve_layout.addSpacing(2)
+        for tuner in (
+            self._tuner(
+                "Precision floor",
+                "accel_floor",
+                0.10,
+                1.00,
+                0.05,
+                2,
+                help_text="Fraction of full gain while the marker is still. 1.00 turns "
+                "the curve off. Lower this first if you cannot hold a caret.",
+            ),
+            self._tuner(
+                "Knee speed",
+                "accel_knee",
+                5,
+                120,
+                5,
+                0,
+                suffix=" px/s",
+                help_text="Where you are halfway back to full gain. Lower it if long "
+                "sweeps feel sluggish.",
+            ),
+            self._tuner(
+                "Sharpness",
+                "accel_sharpness",
+                1.0,
+                4.0,
+                0.1,
+                1,
+                help_text="How abruptly the gain climbs through the knee. Higher is a "
+                "more definite switch between precise and fast; lower blends the two.",
+            ),
+        ):
+            curve_layout.addWidget(tuner)
 
         controls = self._scrolling(
             [
                 heading("Speed"),
                 self._tuner("Horizontal gain", "h_gain", 10, 200, 5, 0, suffix=" px/px"),
                 self._tuner("Vertical gain", "v_gain", 10, 200, 5, 0, suffix=" px/px"),
-                heading("Acceleration"),
-                self._tuner(
-                    "Precision floor",
-                    "accel_floor",
-                    0.10,
-                    1.00,
-                    0.05,
-                    2,
-                    help_text="Fraction of full gain while the marker is still. 1.00 turns "
-                    "the curve off. Lower this first if you cannot hold a caret.",
-                ),
-                self._tuner(
-                    "Knee speed",
-                    "accel_knee",
-                    5,
-                    120,
-                    5,
-                    0,
-                    suffix=" px/s",
-                    help_text="Where you are halfway back to full gain. Lower it if long "
-                    "sweeps feel sluggish.",
-                ),
-                self._tuner("Sharpness", "accel_sharpness", 1.0, 4.0, 0.1, 1),
                 heading("Smoothing"),
                 self._tuner(
                     "Calm at rest",
@@ -433,17 +452,6 @@ class MainWindow(QMainWindow):
             self.config.accel_knee,
             self.config.accel_sharpness,
         )
-        at_rest = self.config.h_gain * self.config.accel_floor
-        if self.config.accel_floor >= 1.0:
-            self.curve_note.setText(
-                "Acceleration is off — the gain is flat at every speed. "
-                "Lower the precision floor to turn it on."
-            )
-        else:
-            self.curve_note.setText(
-                f"{at_rest:.0f} px/px while placing the cursor, "
-                f"{self.config.h_gain:.0f} px/px when sweeping."
-            )
 
     def _save(self) -> None:
         try:

@@ -164,9 +164,17 @@ class CurveWidget(QWidget):
             painter.setBrush(LIVE)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(QPointF(x, y), 5, 5)
+            # Flip the readout to the left of the line when it would otherwise
+            # run off the plot, which it always did at full speed - the one
+            # place the number is most worth reading.
+            label = QRectF(x + 8, y - 22, 96, 16)
+            align = Qt.AlignmentFlag.AlignLeft
+            if label.right() > plot.right():
+                label = QRectF(x - 104, y - 22, 96, 16)
+                align = Qt.AlignmentFlag.AlignRight
             painter.setPen(INK)
             painter.drawText(
-                QRectF(x + 8, y - 22, 96, 16),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                label,
+                align | Qt.AlignmentFlag.AlignVCenter,
                 f"{self._gain_at(speed):.0f} px/px",
             )
