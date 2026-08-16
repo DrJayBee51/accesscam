@@ -99,18 +99,23 @@ QPushButton:focus { border: 2px solid #6aa9ea; }
 QPushButton#stepButton { font-size: 19px; font-weight: 700; padding: 0px; }
 QPushButton#primary { background: #2f6fc0; border-color: #2f6fc0; font-weight: 600; }
 QPushButton#primary:hover { background: #3a82da; }
-/* One flat groove the whole way across, with the handle as the only mark.
-   A filled sub-page made each slider look like a different control depending
-   on where its value happened to sit. */
-QSlider::groove:horizontal { height: 4px; background: #3c3c46; border-radius: 2px; }
-QSlider::sub-page:horizontal { background: #3c3c46; border-radius: 2px; }
-QSlider::add-page:horizontal { background: #3c3c46; border-radius: 2px; }
+/* One flat bar the whole way across, with the handle as the only mark. A
+   filled sub-page made each slider look like a different control depending on
+   where its value happened to sit.
+
+   Pseudo-states go AFTER the sub-control: `::handle:horizontal:focus`, never
+   `:focus::handle:horizontal`. Qt mis-parses the latter and applies the
+   declaration to the whole slider, which painted the widget's full height and
+   left the groove looking like two bars with a gap down the middle. */
+QSlider::groove:horizontal { height: 4px; background: #4a7cad; border-radius: 2px; }
+QSlider::sub-page:horizontal { background: #4a7cad; border-radius: 2px; }
+QSlider::add-page:horizontal { background: #4a7cad; border-radius: 2px; }
 QSlider::handle:horizontal {
-    background: #6aa9ea; width: 14px; height: 20px;
+    background: #cfe6ff; width: 14px; height: 20px;
     margin: -8px 0; border-radius: 3px;
 }
-QSlider::handle:horizontal:hover { background: #8dc2ff; }
-QSlider:focus::handle:horizontal { background: #8dc2ff; }
+QSlider::handle:horizontal:hover { background: #ffffff; }
+QSlider::handle:horizontal:focus { background: #ffffff; }
 QScrollArea { border: none; }
 QFrame#card { background: #1c1c21; border: 1px solid #2b2b32; border-radius: 8px; }
 """
