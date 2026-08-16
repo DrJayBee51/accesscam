@@ -16,7 +16,7 @@ from pathlib import Path
 
 import cv2
 
-from accesscam.camera import CameraError, CameraSettings, CameraSource
+from accesscam.camera import CameraError, CameraSettings, CameraSource, probe_devices
 from accesscam.config import Config, config_path
 from accesscam.engine import Engine
 from accesscam.hotkeys import create_listener, parse_hotkey
@@ -58,26 +58,11 @@ def list_devices(max_index: int = 8) -> int:
     """
     print("probing camera indices (this takes a few seconds)...\n")
     print(f"  {'idx':>3s}  {'granted at 1920x1080':>20s}  {'codec':>5s}   likely")
-    found = 0
-    for index in range(max_index):
-        capture = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-        if not capture.isOpened():
-            capture.release()
-            continue
-        capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-        capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        ok, _ = capture.read()
-        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fourcc = int(capture.get(cv2.CAP_PROP_FOURCC))
-        codec = "".join(chr((fourcc >> (8 * i)) & 0xFF) for i in range(4)).strip()
-        capture.release()
-        if not ok:
-            continue
-        found += 1
-        guess = "Arducam" if width >= 1920 else "other webcam"
-        print(f"  {index:3d}  {f'{width}x{height}':>20s}  {codec:>5s}   {guess}")
+    found = probe_devices(max_index)
+    for device in found:
+        guess = "Arducam" if device.likely_arducam else "other webcam"
+        size = f"{device.width}x{device.height}"
+        print(f"  {device.index:3d}  {size:>20s}  {device.codec:>5s}   {guess}")
 
     if not found:
         print("  no readable cameras found - check the USB connection")

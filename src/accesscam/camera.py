@@ -201,15 +201,61 @@ class CameraSource:
         }
 
 
-def list_devices(max_index: int = 8) -> list[int]:
-    """Probe for readable camera indices. Slow, so only used interactively."""
+@dataclass
+class DeviceInfo:
+    """What a probe found at one camera index."""
+
+    index: int
+    width: int
+    height: int
+    codec: str
+
+    @property
+    def likely_arducam(self) -> bool:
+        """Whether this granted 1080p, which lesser webcams will not.
+
+        The index differs from machine to machine and a laptop's built-in
+        webcam frequently takes 0, so something has to tell them apart. What
+        they grant at 1920x1080 does it without needing a name.
+        """
+        return self.width >= 1920
+
+    @property
+    def label(self) -> str:
+        kind = "likely the Arducam" if self.likely_arducam else "other webcam"
+        return f"{self.index}: {self.width}x{self.height} {self.codec} - {kind}"
+
+
+def probe_devices(max_index: int = 8) -> list[DeviceInfo]:
+    """Open each index in turn and report what answers. Seconds, not milliseconds.
+
+    Every index has to be opened to find out whether anything is there, so this
+    is far too slow to call on a timer. It is also exclusive: an index already
+    held by a running capture will not open here, so close yours first.
+    """
     backend = default_backend()
-    found: list[int] = []
+    found: list[DeviceInfo] = []
     for index in range(max_index):
         cap = cv2.VideoCapture(index, backend)
-        if cap.isOpened():
-            ok, _ = cap.read()
-            if ok:
-                found.append(index)
+        if not cap.isOpened():
+            cap.release()
+            continue
+
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        ok, _ = cap.read()
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+        codec = "".join(chr((fourcc >> (8 * i)) & 0xFF) for i in range(4)).strip()
         cap.release()
+
+        if ok:
+            found.append(DeviceInfo(index=index, width=width, height=height, codec=codec))
     return found
+
+
+def list_devices(max_index: int = 8) -> list[int]:
+    """Just the readable indices, for callers that do not need the detail."""
+    return [device.index for device in probe_devices(max_index)]

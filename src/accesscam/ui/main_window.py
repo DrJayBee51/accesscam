@@ -1,11 +1,17 @@
 """The settings window.
 
-Two tabs, split by the question being asked. *Camera & marker* answers "is the
+Three tabs, split by the question being asked. *Camera & Marker* answers "is the
 dot being seen", and everything on it changes what the tracker gets. *Cursor
-movement* answers "does the cursor feel right", and everything on it changes
-what happens to the dot once found. Keeping them apart matters because the
+Movement* answers "does the cursor feel right", and everything on it changes
+what happens to the dot once found. Keeping those two apart matters because the
 first is diagnosis and the second is taste, and mixing them is how you end up
 adjusting gain to fix an exposure problem.
+
+*Application* is a third category rather than a drawer for leftovers: which
+camera to use, whether to start at logon, and how to quit. None of it answers
+either of the other two questions, and the camera choice in particular belongs
+nowhere else - it is not a tracking-quality setting, it is which hardware to
+point at.
 
 The window stays usable while the cursor is live, as the SmartNav's does. That
 is not a detail: the reason to open this window is usually that the cursor is
@@ -19,12 +25,15 @@ import contextlib
 import math
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
+    QCheckBox,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -38,6 +47,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from accesscam import startup
 from accesscam.config import Config, config_path
 from accesscam.engine import Engine
 from accesscam.ui.controls import Tuner
@@ -57,6 +67,10 @@ PREVIEW_SHARE = 1 / 4
 # At 1.0 the sliders are squeezed against the step buttons; the extra goes
 # almost entirely into slider length, which is what is being aimed at.
 RIGHT_CARD_SCALE = 1.35
+
+# Gap between the two cards on a tab. Named because the Application tab's single
+# card has to span both of them plus this.
+TAB_SPACING = 16
 
 STYLESHEET = """
 QWidget { background: #17171a; color: #e4e4e8; font-size: 13px; }
@@ -111,6 +125,20 @@ QPushButton:focus { border: 2px solid #6aa9ea; }
 QPushButton#stepButton { font-size: 19px; font-weight: 700; padding: 0px; }
 QPushButton#primary { background: #2f6fc0; border-color: #2f6fc0; font-weight: 600; }
 QPushButton#primary:hover { background: #3a82da; }
+QPushButton#danger { background: #4a2020; border-color: #7a3232; color: #ff9d94; }
+QPushButton#danger:hover { background: #5c2828; border-color: #a04444; }
+QWidget#rowGroup { background: transparent; }
+QCheckBox { background: transparent; spacing: 9px; }
+QCheckBox::indicator { width: 17px; height: 17px; border-radius: 4px;
+    border: 1px solid #3d3d47; background: #24242b; }
+QCheckBox::indicator:hover { border-color: #6aa9ea; }
+QCheckBox::indicator:checked { background: #2f6fc0; border-color: #2f6fc0; }
+QCheckBox:disabled { color: #6a6a74; }
+QComboBox { background: #24242b; border: 1px solid #3d3d47; border-radius: 5px;
+    padding: 7px 10px; }
+QComboBox:hover { border-color: #6aa9ea; }
+QComboBox QAbstractItemView { background: #24242b; border: 1px solid #3d3d47;
+    selection-background-color: #2f6fc0; }
 /* One flat bar the whole way across, with the handle as the only mark. A
    filled sub-page made each slider look like a different control depending on
    where its value happened to sit.
@@ -148,6 +176,21 @@ def hint(text: str) -> QLabel:
     return label
 
 
+def _rows(*items) -> QWidget:
+    """Wrap layouts and widgets into one widget, for the column builder."""
+    holder = QWidget()
+    holder.setObjectName("rowGroup")  # transparent, or it paints over its card
+    column = QVBoxLayout(holder)
+    column.setContentsMargins(0, 0, 0, 0)
+    column.setSpacing(8)
+    for item in items:
+        if isinstance(item, QWidget):
+            column.addWidget(item)
+        else:
+            column.addLayout(item)
+    return holder
+
+
 class MainWindow(QMainWindow):
     def __init__(
         self,
@@ -183,6 +226,7 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_camera_tab(), "Camera && Marker")
         self.tabs.addTab(self._build_movement_tab(), "Cursor Movement")
+        self.tabs.addTab(self._build_application_tab(), "Application")
         layout.addWidget(self.tabs, 1)
         layout.addWidget(self._build_footer())
         self.setCentralWidget(root)
@@ -296,7 +340,7 @@ class MainWindow(QMainWindow):
         page = QWidget()
         row = QHBoxLayout(page)
         row.setContentsMargins(12, 12, 12, 12)
-        row.setSpacing(16)
+        row.setSpacing(TAB_SPACING)
 
         self._camera_controls = controls
         row.addWidget(preview_card)
@@ -335,6 +379,11 @@ class MainWindow(QMainWindow):
         self._camera_controls.setFixedWidth(right)
         self._movement_controls.setFixedWidth(right)
 
+        # The Application tab has one card rather than two, so it spans the
+        # width both of the others occupy. Left at its natural width it clipped
+        # the camera row and left most of the tab empty beside it.
+        self._application_controls.setFixedWidth(left + right + TAB_SPACING)
+
     def _lock_size(self) -> None:
         """Fix the window at the size its content needs.
 
@@ -348,10 +397,14 @@ class MainWindow(QMainWindow):
         a small display the natural size could otherwise exceed what is there
         to show it on.
         """
-        self.tabs.setCurrentIndex(1)  # size for the taller tab, not the first
-        needed = self.sizeHint()
+        # Measure every tab and take the largest. Sizing to the first alone
+        # would clip whichever of the others needs more room.
+        needed = None
+        for index in range(self.tabs.count()):
+            self.tabs.setCurrentIndex(index)
+            hint = self.sizeHint()
+            needed = hint if needed is None else needed.expandedTo(hint)
         self.tabs.setCurrentIndex(0)
-        needed = needed.expandedTo(self.sizeHint())
 
         screen = self.screen() or QApplication.primaryScreen()
         if screen is not None:
@@ -481,6 +534,105 @@ class MainWindow(QMainWindow):
         row.addStretch(1)
         return page
 
+    def _build_application_tab(self) -> QWidget:
+        """Settings about the application rather than about the tracking.
+
+        A third category, not a drawer for leftovers: the other two tabs answer
+        "is the dot seen" and "does the cursor feel right", and none of this
+        answers either. The camera choice in particular belongs nowhere else -
+        it is not a tracking-quality setting, it is which hardware to use.
+        """
+        self.camera_choice = QComboBox()
+        self.camera_choice.setMinimumWidth(320)
+        self.camera_choice.addItem(f"Camera {self.config.device} (in use)", self.config.device)
+        self.camera_choice.activated.connect(self._on_camera_chosen)
+
+        rescan = QPushButton("Scan for cameras")
+        rescan.clicked.connect(self._rescan_cameras)
+
+        camera_row = QHBoxLayout()
+        camera_row.setSpacing(10)
+        camera_row.addWidget(self.camera_choice, 1)
+        camera_row.addWidget(rescan)
+        camera_row.addWidget(
+            HelpButton(
+                "Which camera to track with. The index differs from machine to "
+                "machine, and a laptop's built-in webcam frequently takes 0.\n\n"
+                "Scanning opens every index in turn to see what answers, which "
+                "takes a few seconds and briefly stops tracking — the camera in "
+                "use has to be released before anything else can look at it.\n\n"
+                "Switching cameras reopens the capture. If the new one cannot be "
+                "opened, the old one is put back.",
+                "the camera",
+            )
+        )
+
+        self.camera_note = QLabel("Scan to see what else is connected.")
+        self.camera_note.setObjectName("tunerHelp")
+        self.camera_note.setWordWrap(True)
+
+        self.start_minimised_box = QCheckBox("Start minimised to the tray")
+        self.start_minimised_box.setChecked(self.config.start_minimized)
+        self.start_minimised_box.toggled.connect(self._on_start_minimised)
+
+        self.run_at_logon_box = QCheckBox("Start when I log in")
+        self.run_at_logon_box.setEnabled(startup.supported())
+        self.run_at_logon_box.setChecked(startup.is_enabled())
+        self.run_at_logon_box.toggled.connect(self._on_run_at_logon)
+
+        logon_row = QHBoxLayout()
+        logon_row.setSpacing(8)
+        logon_row.addWidget(self.run_at_logon_box)
+        logon_row.addWidget(
+            HelpButton(
+                "Registers a scheduled task that runs AccessCam at logon with "
+                "highest privileges.\n\nIt has to be a task rather than the usual "
+                "startup shortcut, because AccessCam needs to run elevated — "
+                "Windows otherwise stops the cursor registering as a hover on "
+                "anything running at higher privilege, such as an on-screen "
+                "keyboard.\n\nCreating the task needs administrator rights, so "
+                "this only works when AccessCam itself was started as "
+                "administrator.",
+                "starting at logon",
+            )
+        )
+        logon_row.addStretch(1)
+
+        quit_button = QPushButton("Quit AccessCam")
+        quit_button.setObjectName("danger")
+        quit_button.setMinimumWidth(180)
+        quit_button.clicked.connect(self._confirm_quit)
+
+        quit_row = QHBoxLayout()
+        quit_row.addWidget(quit_button)
+        quit_row.addStretch(1)
+
+        controls = self._scrolling(
+            [
+                heading("Camera"),
+                _rows(camera_row, self.camera_note),
+                heading("Starting up"),
+                self.start_minimised_box,
+                _rows(logon_row),
+                heading("Closing"),
+                hint(
+                    "Closing the window hides AccessCam to the tray and it keeps "
+                    "driving the cursor. Quitting stops it entirely."
+                ),
+                _rows(quit_row),
+            ],
+            card=True,
+        )
+
+        page = QWidget()
+        row = QHBoxLayout(page)
+        row.setContentsMargins(12, 12, 12, 12)
+        row.setSpacing(TAB_SPACING)
+        row.addWidget(controls)
+        row.addStretch(1)
+        self._application_controls = controls
+        return page
+
     def _build_footer(self) -> QWidget:
         card = QFrame()
         card.setObjectName("card")
@@ -551,6 +703,137 @@ class MainWindow(QMainWindow):
         self.config.set_roi(0, 0, self.config.width, self.config.height)
         self.engine.apply(self.config)
         self.statusBar().showMessage("Searching the whole frame again", 4000)
+
+    # -- application settings ----------------------------------------------
+
+    def _rescan_cameras(self) -> None:
+        """Enumerate cameras, which means letting go of the one in use.
+
+        Every index has to be opened to find out what is there, and an index
+        already held by a running capture will not open twice - so tracking
+        stops for the duration. It is an explicit button rather than something
+        that happens on opening the tab for exactly that reason.
+        """
+        from accesscam.camera import probe_devices
+
+        self.camera_note.setText("Scanning…")
+        QApplication.processEvents()
+
+        was_running = self.engine.running
+        self.engine.stop()
+        self.engine.camera.close()
+
+        try:
+            devices = probe_devices()
+        finally:
+            reopened = self._open_camera(self.config.device)
+            if reopened is not None:
+                self.engine.use_camera(reopened)
+            if was_running:
+                self.engine.start()
+
+        self.camera_choice.clear()
+        for device in devices:
+            self.camera_choice.addItem(device.label, device.index)
+        if not devices:
+            self.camera_choice.addItem(f"Camera {self.config.device}", self.config.device)
+
+        index = self.camera_choice.findData(self.config.device)
+        self.camera_choice.setCurrentIndex(max(index, 0))
+        self.camera_note.setText(
+            f"Found {len(devices)} camera{'s' if len(devices) != 1 else ''}."
+            if devices
+            else "No cameras answered. Check the USB connection."
+        )
+
+    def _open_camera(self, device: int):
+        """Open one camera index, or None if it will not open."""
+        from accesscam.app import build_camera
+        from accesscam.camera import CameraError
+
+        wanted = replace(self.config, device=device)
+        try:
+            return build_camera(wanted)
+        except CameraError:
+            return None
+
+    def _on_camera_chosen(self, _row: int) -> None:
+        device = self.camera_choice.currentData()
+        if device is None or device == self.config.device:
+            return
+
+        was_running = self.engine.running
+        self.engine.stop()
+        self.engine.camera.close()
+
+        camera = self._open_camera(device)
+        if camera is None:
+            # Put the old one back rather than leaving the user with no
+            # tracking at all and a dialog to dismiss using a cursor that has
+            # just stopped working.
+            restored = self._open_camera(self.config.device)
+            if restored is not None:
+                self.engine.use_camera(restored)
+            if was_running:
+                self.engine.start()
+            self.camera_choice.setCurrentIndex(
+                max(self.camera_choice.findData(self.config.device), 0)
+            )
+            QMessageBox.warning(
+                self,
+                "Could not open that camera",
+                f"Camera {device} would not open, so camera {self.config.device} is still in use.",
+            )
+            return
+
+        self.config.device = device
+        self.engine.use_camera(camera)
+        if was_running:
+            self.engine.start()
+        self.statusBar().showMessage(
+            f"Now tracking with camera {device}. Save settings to keep it.", 6000
+        )
+
+    def _on_start_minimised(self, checked: bool) -> None:
+        self.config.start_minimized = checked
+        if self.tray is not None:
+            self.tray.minimised_action.setChecked(checked)
+
+    def _on_run_at_logon(self, checked: bool) -> None:
+        outcome = startup.enable() if checked else startup.disable()
+        if outcome.ok:
+            self.statusBar().showMessage(
+                "AccessCam will start when you log in."
+                if checked
+                else "AccessCam will no longer start when you log in.",
+                6000,
+            )
+            return
+
+        # Put the box back: it reports what is registered, not what was wanted.
+        self.run_at_logon_box.blockSignals(True)
+        self.run_at_logon_box.setChecked(not checked)
+        self.run_at_logon_box.blockSignals(False)
+        QMessageBox.warning(self, "Could not change the logon task", outcome.message)
+
+    def _confirm_quit(self) -> None:
+        """Quit, but ask first.
+
+        For someone whose pointer this *is*, quitting by accident means losing
+        the means to relaunch it - recovery is the fallback input device. One
+        dialog is a fair price.
+        """
+        answer = QMessageBox.question(
+            self,
+            "Quit AccessCam?",
+            "The cursor will stop responding to head movement.\n\n"
+            "Closing the window instead keeps AccessCam running in the tray.",
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.quit_requested = True
+            QApplication.quit()
 
     def _refresh_curve(self) -> None:
         self.curve.set_curve(

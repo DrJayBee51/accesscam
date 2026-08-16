@@ -166,6 +166,28 @@ class Engine:
         with self._lock:
             return None if self._frame is None else self._frame.copy()
 
+    def use_camera(self, camera: CameraSource) -> None:
+        """Adopt a different camera. The engine must be stopped first.
+
+        Not part of `apply`, and deliberately not doable while running: the
+        capture has to be closed and reopened, and the loop cannot be reading
+        from a camera that is being swapped underneath it.
+
+        Everything downstream is reset, because a new camera means the previous
+        marker position describes a frame that no longer exists - carrying it
+        over would deliver one enormous displacement on the first frame.
+        """
+        if self.running:
+            raise RuntimeError("Stop the engine before changing its camera.")
+        self.camera = camera
+        self.tracker.reset()
+        self.smoother.reset()
+        self.mapper.reset()
+        with self._lock:
+            self._frame = None
+            self._position = None
+            self._tracking = False
+
     # -- live tuning -------------------------------------------------------
 
     def apply(self, config: Config) -> None:

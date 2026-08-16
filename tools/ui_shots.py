@@ -35,7 +35,11 @@ from accesscam.mouse.base import ScreenBounds  # noqa: E402
 from accesscam.mouse.fake import RecordingMouse  # noqa: E402
 from accesscam.ui.main_window import MainWindow  # noqa: E402
 
-TABS = [(0, "accesscam-1-camera-and-marker.png"), (1, "accesscam-2-cursor-movement.png")]
+TABS = [
+    (0, "accesscam-1-camera-and-marker.png"),
+    (1, "accesscam-2-cursor-movement.png"),
+    (2, "accesscam-3-application.png"),
+]
 
 # Settings chosen to show the features rather than to be anyone's defaults: a
 # region that excludes something, and an acceleration curve with a visible knee.
