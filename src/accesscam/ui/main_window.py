@@ -218,6 +218,14 @@ class MainWindow(QMainWindow):
         self.preview.roiChanged.connect(self._on_roi_dragged)
         self._size_preview()
 
+        preview_card = QFrame()
+        preview_card.setObjectName("card")
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(14, 12, 14, 14)
+        preview_layout.setSpacing(8)
+        preview_layout.addWidget(heading("What the tracker sees"))
+        preview_layout.addWidget(self.preview)
+
         controls = self._scrolling(
             [
                 heading("Exposure and threshold"),
@@ -253,7 +261,8 @@ class MainWindow(QMainWindow):
                     2,
                     help_text="Rejects elongated reflections. 0 disables the shape filter.",
                 ),
-            ]
+            ],
+            card=True,
         )
         page = QWidget()
         row = QHBoxLayout(page)
@@ -262,7 +271,7 @@ class MainWindow(QMainWindow):
 
         left = QVBoxLayout()
         left.setSpacing(10)
-        left.addWidget(self.preview)
+        left.addWidget(preview_card)
         left.addStretch(1)
         row.addLayout(left)
         row.addWidget(controls, 1)
