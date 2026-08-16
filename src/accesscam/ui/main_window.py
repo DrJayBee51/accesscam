@@ -476,7 +476,9 @@ class MainWindow(QMainWindow):
         current = getattr(self.config, key)
         setattr(self.config, key, int(round(value)) if isinstance(current, int) else value)
         self.engine.apply(self.config)
-        if key in {"h_gain", "accel_floor", "accel_knee", "accel_sharpness"}:
+        # The plot is normalised, so the gains no longer redraw it - only the
+        # three values that change the curve's shape do.
+        if key.startswith("accel_"):
             self._refresh_curve()
 
     def _on_roi_dragged(self, x: int, y: int, w: int, h: int) -> None:
@@ -490,7 +492,6 @@ class MainWindow(QMainWindow):
 
     def _refresh_curve(self) -> None:
         self.curve.set_curve(
-            self.config.h_gain,
             self.config.accel_floor,
             self.config.accel_knee,
             self.config.accel_sharpness,

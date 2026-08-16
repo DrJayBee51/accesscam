@@ -25,7 +25,15 @@ INK = QColor(228, 228, 232)
 MUTED = QColor(150, 150, 158)
 
 VMAX = 240.0  # marker px/s across the plot
-MARGIN_LEFT = 54
+
+# The vertical axis is a percentage of full gain, not an absolute px/px. The
+# curve scales h_gain and v_gain by the same factor, so plotting either one in
+# absolute terms would show a number that is only true for that axis, and would
+# redraw itself every time a gain slider moved without the curve having changed
+# shape at all. A little headroom above 100 keeps the full-gain line off the
+# very top edge.
+SMAX = 105.0
+MARGIN_LEFT = 58
 MARGIN_RIGHT = 16
 MARGIN_TOP = 14
 MARGIN_BOTTOM = 34
@@ -37,14 +45,12 @@ class CurveWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMinimumHeight(210)
-        self._gain = 100.0
         self._floor = 1.0
         self._knee = 40.0
         self._sharpness = 1.8
         self._live_speed: float | None = None
 
-    def set_curve(self, gain: float, floor: float, knee: float, sharpness: float) -> None:
-        self._gain = gain
+    def set_curve(self, floor: float, knee: float, sharpness: float) -> None:
         self._floor = floor
         self._knee = knee
         self._sharpness = sharpness
@@ -64,17 +70,9 @@ class CurveWidget(QWidget):
             max(self.height() - MARGIN_TOP - MARGIN_BOTTOM, 1),
         )
 
-    def _gain_max(self) -> float:
-        # Rounded up to a tidy step so the axis labels stay readable as the
-        # gain slider moves, rather than jittering with every tick.
-        for step in (5, 10, 20, 25, 50):
-            top = -(-self._gain * 1.15 // step) * step
-            if top / step <= 7:
-                return float(top)
-        return self._gain * 1.15
-
-    def _gain_at(self, speed: float) -> float:
-        return self._gain * acceleration_scale(speed, self._floor, self._knee, self._sharpness)
+    def _percent_at(self, speed: float) -> float:
+        """Gain at this speed as a percentage of full gain."""
+        return 100.0 * acceleration_scale(speed, self._floor, self._knee, self._sharpness)
 
     # -- painting ----------------------------------------------------------
 
@@ -83,31 +81,27 @@ class CurveWidget(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         plot = self._plot_rect()
-        gain_max = self._gain_max()
 
         def x_of(speed: float) -> float:
             return plot.left() + (speed / VMAX) * plot.width()
 
-        def y_of(gain: float) -> float:
-            return plot.bottom() - (gain / gain_max) * plot.height()
+        def y_of(percent: float) -> float:
+            return plot.bottom() - (percent / SMAX) * plot.height()
 
         small = QFont(self.font())
         small.setPointSizeF(max(self.font().pointSizeF() - 1.0, 7.0))
         painter.setFont(small)
 
         # Grid and vertical axis
-        step = gain_max / 5
-        painter.setPen(QPen(GRID, 1))
-        for index in range(6):
-            value = step * index
+        for value in (0, 25, 50, 75, 100):
             y = y_of(value)
             painter.setPen(QPen(GRID, 1))
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
             painter.setPen(MUTED)
             painter.drawText(
-                QRectF(0, y - 9, MARGIN_LEFT - 8, 18),
+                QRectF(0, y - 9, MARGIN_LEFT - 10, 18),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                f"{value:.0f}",
+                f"{value}%",
             )
 
         painter.setPen(QPen(AXIS, 1))
@@ -127,18 +121,27 @@ class CurveWidget(QWidget):
             "marker speed (px/s)",
         )
 
-        # Flat reference
-        painter.setPen(QPen(FLAT, 2, Qt.PenStyle.DashLine))
-        painter.drawLine(
-            QPointF(plot.left(), y_of(self._gain)), QPointF(plot.right(), y_of(self._gain))
+        painter.save()
+        painter.translate(14, plot.center().y())
+        painter.rotate(-90)
+        painter.setPen(MUTED)
+        painter.drawText(
+            QRectF(-plot.height() / 2, -8, plot.height(), 16),
+            Qt.AlignmentFlag.AlignCenter,
+            "% of full gain",
         )
+        painter.restore()
+
+        # Full gain, the ceiling the curve approaches but never crosses.
+        painter.setPen(QPen(FLAT, 2, Qt.PenStyle.DashLine))
+        painter.drawLine(QPointF(plot.left(), y_of(100)), QPointF(plot.right(), y_of(100)))
 
         # The curve itself
         path = QPainterPath()
         samples = max(int(plot.width()), 2)
         for index in range(samples + 1):
             speed = VMAX * index / samples
-            point = QPointF(x_of(speed), y_of(self._gain_at(speed)))
+            point = QPointF(x_of(speed), y_of(self._percent_at(speed)))
             if index == 0:
                 path.moveTo(point)
             else:
@@ -153,12 +156,12 @@ class CurveWidget(QWidget):
             painter.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()))
             painter.setBrush(CURVE)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(QPointF(x, y_of(self._gain_at(self._knee))), 4, 4)
+            painter.drawEllipse(QPointF(x, y_of(self._percent_at(self._knee))), 4, 4)
 
         # Where the marker is right now
         if self._live_speed is not None:
             speed = min(self._live_speed, VMAX)
-            x, y = x_of(speed), y_of(self._gain_at(speed))
+            x, y = x_of(speed), y_of(self._percent_at(speed))
             painter.setPen(QPen(LIVE, 1, Qt.PenStyle.SolidLine))
             painter.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()))
             painter.setBrush(LIVE)
@@ -167,14 +170,14 @@ class CurveWidget(QWidget):
             # Flip the readout to the left of the line when it would otherwise
             # run off the plot, which it always did at full speed - the one
             # place the number is most worth reading.
-            label = QRectF(x + 8, y - 22, 96, 16)
+            label = QRectF(x + 8, y - 22, 70, 16)
             align = Qt.AlignmentFlag.AlignLeft
             if label.right() > plot.right():
-                label = QRectF(x - 104, y - 22, 96, 16)
+                label = QRectF(x - 78, y - 22, 70, 16)
                 align = Qt.AlignmentFlag.AlignRight
             painter.setPen(INK)
             painter.drawText(
                 label,
                 align | Qt.AlignmentFlag.AlignVCenter,
-                f"{self._gain_at(speed):.0f} px/px",
+                f"{self._percent_at(speed):.0f}%",
             )
