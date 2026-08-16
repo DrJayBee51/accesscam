@@ -41,13 +41,49 @@ def supported() -> bool:
 def executable() -> str:
     """The command the task should run.
 
-    `sys.executable` is the launcher when installed as a console script, so this
-    prefers that and falls back to running the module through the interpreter.
+    Prefers `pythonw.exe` over `python.exe` where both exist. `python.exe` is a
+    console application, so Windows allocates a console window for it - which
+    means a black box appearing behind the settings window at every single
+    logon, for a program that has a GUI and never prints anything to it.
     """
     exe = Path(sys.executable)
-    if exe.stem.lower() in {"python", "pythonw"}:
-        return f'"{exe}" -m accesscam --ui'
-    return f'"{exe}" --ui'
+    if exe.stem.lower() not in {"python", "pythonw"}:
+        return f'"{exe}" --ui'
+
+    windowed = exe.with_name("pythonw.exe")
+    interpreter = windowed if windowed.exists() else exe
+    return f'"{interpreter}" -m accesscam --ui'
+
+
+def registered_command() -> str | None:
+    """What the existing task actually runs, or None if there is no task.
+
+    Worth checking rather than assuming: a task registered by an older version
+    keeps whatever command it was created with, and `is_enabled` alone would
+    report everything fine while the wrong thing ran at logon.
+    """
+    if not supported():
+        return None
+
+    result = _run(["schtasks", "/query", "/tn", TASK_NAME, "/xml"])
+    if result.returncode != 0:
+        return None
+
+    command = _between(result.stdout, "<Command>", "</Command>")
+    arguments = _between(result.stdout, "<Arguments>", "</Arguments>")
+    if command is None:
+        return None
+    return f"{command} {arguments}".strip() if arguments else command
+
+
+def _between(text: str, opening: str, closing: str) -> str | None:
+    start = text.find(opening)
+    if start < 0:
+        return None
+    end = text.find(closing, start)
+    if end < 0:
+        return None
+    return text[start + len(opening) : end].strip()
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
@@ -60,11 +96,38 @@ def _run(args: list[str]) -> subprocess.CompletedProcess:
     )
 
 
+@dataclass(frozen=True)
+class State:
+    """Everything worth knowing about the logon task, from one query.
+
+    Grouped rather than exposed as three functions because each of those would
+    spawn its own `schtasks`, and asking Windows the same question three times
+    every time a window opens is both slow and able to disagree with itself.
+    """
+
+    supported: bool
+    enabled: bool
+    stale: bool
+
+
+def state() -> State:
+    if not supported():
+        return State(supported=False, enabled=False, stale=False)
+
+    command = registered_command()
+    if command is None:
+        return State(supported=True, enabled=False, stale=False)
+    return State(supported=True, enabled=True, stale=command != executable())
+
+
 def is_enabled() -> bool:
     """Whether the logon task exists. False on anything but Windows."""
-    if not supported():
-        return False
-    return _run(["schtasks", "/query", "/tn", TASK_NAME]).returncode == 0
+    return state().enabled
+
+
+def is_stale() -> bool:
+    """Whether a registered task runs something other than what we register now."""
+    return state().stale
 
 
 def enable() -> Outcome:

@@ -53,8 +53,20 @@ def qt_app():
 
 
 @pytest.fixture
-def window(qt_app):
-    """A live window over a fake camera, torn down after each test."""
+def window(qt_app, monkeypatch):
+    """A live window over a fake camera, torn down after each test.
+
+    The logon-task query is stubbed out. Left real it would spawn `schtasks`
+    for every test, and worse, the results would depend on whether the machine
+    running the suite happens to have AccessCam registered - so the tests would
+    pass or fail according to a setting on the developer's desktop.
+    """
+    from accesscam import startup
+
+    monkeypatch.setattr(
+        startup, "state", lambda: startup.State(supported=True, enabled=False, stale=False)
+    )
+
     from accesscam.config import Config
     from accesscam.engine import Engine
     from accesscam.mouse import CursorController

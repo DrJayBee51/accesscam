@@ -152,6 +152,26 @@ def test_a_successful_logon_task_leaves_the_checkbox_set(window, monkeypatch):
     assert window.run_at_logon_box.isChecked()
 
 
+def test_a_stale_task_is_reported_rather_than_left_looking_fine(window):
+    # A task made by an older version keeps its original command, so the box
+    # can read "on" while the wrong thing runs at logon.
+    window._refresh_logon_note(startup.State(supported=True, enabled=True, stale=True))
+
+    assert "older command" in window.logon_note.text()
+
+
+def test_a_current_task_says_it_is_elevated(window):
+    window._refresh_logon_note(startup.State(supported=True, enabled=True, stale=False))
+
+    assert "elevated" in window.logon_note.text()
+
+
+def test_an_unsupported_platform_says_so(window):
+    window._refresh_logon_note(startup.State(supported=False, enabled=False, stale=False))
+
+    assert "Windows" in window.logon_note.text()
+
+
 # -- quitting -------------------------------------------------------------
 
 

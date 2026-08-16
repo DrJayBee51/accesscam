@@ -575,10 +575,19 @@ class MainWindow(QMainWindow):
         self.start_minimised_box.setChecked(self.config.start_minimized)
         self.start_minimised_box.toggled.connect(self._on_start_minimised)
 
+        # One query, not three: each of these would otherwise spawn its own
+        # schtasks every time the window opens.
+        logon = startup.state()
+
         self.run_at_logon_box = QCheckBox("Start when I log in")
-        self.run_at_logon_box.setEnabled(startup.supported())
-        self.run_at_logon_box.setChecked(startup.is_enabled())
+        self.run_at_logon_box.setEnabled(logon.supported)
+        self.run_at_logon_box.setChecked(logon.enabled)
         self.run_at_logon_box.toggled.connect(self._on_run_at_logon)
+
+        self.logon_note = QLabel()
+        self.logon_note.setObjectName("tunerHelp")
+        self.logon_note.setWordWrap(True)
+        self._refresh_logon_note(logon)
 
         logon_row = QHBoxLayout()
         logon_row.setSpacing(8)
@@ -613,7 +622,7 @@ class MainWindow(QMainWindow):
                 _rows(camera_row, self.camera_note),
                 heading("Starting up"),
                 self.start_minimised_box,
-                _rows(logon_row),
+                _rows(logon_row, self.logon_note),
                 heading("Closing"),
                 hint(
                     "Closing the window hides AccessCam to the tray and it keeps "
@@ -799,9 +808,29 @@ class MainWindow(QMainWindow):
         if self.tray is not None:
             self.tray.minimised_action.setChecked(checked)
 
+    def _refresh_logon_note(self, logon: startup.State | None = None) -> None:
+        """Say what is actually registered, not what the checkbox implies.
+
+        A task created by an earlier version keeps the command it was made
+        with, so the box can read "on" while the wrong thing runs at logon.
+        """
+        logon = logon or startup.state()
+        if not logon.supported:
+            self.logon_note.setText("Only wired up for Windows so far.")
+        elif logon.stale:
+            self.logon_note.setText(
+                "The registered task runs an older command. Untick and re-tick "
+                "to update it — you will need AccessCam running as administrator."
+            )
+        elif logon.enabled:
+            self.logon_note.setText("Registered as a scheduled task, elevated.")
+        else:
+            self.logon_note.setText("")
+
     def _on_run_at_logon(self, checked: bool) -> None:
         outcome = startup.enable() if checked else startup.disable()
         if outcome.ok:
+            self._refresh_logon_note()
             self.statusBar().showMessage(
                 "AccessCam will start when you log in."
                 if checked
