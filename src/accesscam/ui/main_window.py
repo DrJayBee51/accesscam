@@ -55,6 +55,10 @@ QTabBar::tab:selected { background: #26262c; color: #ffffff; }
 QLabel#tunerName { font-weight: 600; }
 QLabel#tunerKey { color: #7c7c86; font-family: Consolas, monospace; font-size: 11px; }
 QLabel#tunerHelp { color: #9a9aa4; font-size: 11px; }
+QLabel#roiReadout {
+    font-family: Consolas, monospace; color: #6aa9ea; font-size: 12px;
+    padding: 7px 10px; background: #1f242c; border: 1px solid #2f3a48; border-radius: 5px;
+}
 QLabel#tunerValue {
     font-family: Consolas, monospace; font-size: 14px; font-weight: 600; color: #6aa9ea;
 }
@@ -189,6 +193,9 @@ class MainWindow(QMainWindow):
         self.preview = PreviewWidget()
         self.preview.roiChanged.connect(self._on_roi_dragged)
 
+        self.roi_readout = QLabel()
+        self.roi_readout.setObjectName("roiReadout")
+
         whole_frame = QPushButton("Reset to whole frame")
         whole_frame.clicked.connect(self._reset_roi)
 
@@ -196,14 +203,13 @@ class MainWindow(QMainWindow):
             [
                 heading("Region searched"),
                 hint(
-                    "Drag a box on the preview to limit where the marker is looked for. "
-                    "Everything dimmed is ignored, which is how a daylit window stops "
-                    "stealing the track."
+                    "Drag the corner handles on the preview to limit where the marker is "
+                    "looked for. Everything dimmed is ignored, which is how a daylit "
+                    "window stops stealing the track. Drag inside the box to move it, or "
+                    "outside to draw a new one. With the preview focused, the arrow keys "
+                    "move it and Shift+arrows resize it."
                 ),
-                self._tuner("Left", "roi_x", 0, 639, 5, 0, suffix=" px"),
-                self._tuner("Top", "roi_y", 0, 479, 5, 0, suffix=" px"),
-                self._tuner("Width", "roi_w", 0, 640, 5, 0, suffix=" px"),
-                self._tuner("Height", "roi_h", 0, 480, 5, 0, suffix=" px"),
+                self.roi_readout,
                 whole_frame,
                 heading("Exposure and threshold"),
                 self._tuner(
@@ -373,38 +379,35 @@ class MainWindow(QMainWindow):
         self.config.set_roi(*self.config.roi())
         for tuner in self._tuners:
             tuner.set_value(float(getattr(self.config, tuner.key)))
+        self._refresh_roi_readout()
         self._refresh_curve()
 
     def _on_change(self, key: str, value: float) -> None:
         current = getattr(self.config, key)
         setattr(self.config, key, int(round(value)) if isinstance(current, int) else value)
-        if key.startswith("roi_"):
-            # Re-clamp: the four values move independently, so a wide box pushed
-            # right can otherwise run off the frame and quietly exclude the marker.
-            self.config.set_roi(
-                self.config.roi_x, self.config.roi_y, self.config.roi_w, self.config.roi_h
-            )
         self.engine.apply(self.config)
         if key in {"h_gain", "accel_floor", "accel_knee", "accel_sharpness"}:
             self._refresh_curve()
 
     def _on_roi_dragged(self, x: int, y: int, w: int, h: int) -> None:
         self.config.set_roi(x, y, w, h)
-
-        shown = {}
-        for tuner in self._tuners:
-            if tuner.key.startswith("roi_"):
-                tuner.set_value(float(getattr(self.config, tuner.key)))
-                shown[tuner.key] = int(round(tuner.value()))
-        # Read the values straight back off the controls. They quantise to their
-        # own step, so taking the drag as authoritative would leave the numbers
-        # on screen disagreeing with the box being used by a few pixels.
-        self.config.set_roi(shown["roi_x"], shown["roi_y"], shown["roi_w"], shown["roi_h"])
-
+        self._refresh_roi_readout()
         self.engine.apply(self.config)
 
+    def _refresh_roi_readout(self) -> None:
+        x, y, w, h = self.config.roi()
+        if self.config.roi_is_whole_frame():
+            self.roi_readout.setText(f"Whole frame — {w} × {h}, nothing excluded")
+        else:
+            covered = 100 * (w * h) / (self.config.width * self.config.height)
+            self.roi_readout.setText(
+                f"{w} × {h} at ({x}, {y})  ·  {covered:.0f}% of the frame searched"
+            )
+
     def _reset_roi(self) -> None:
-        self._on_roi_dragged(0, 0, self.config.width, self.config.height)
+        self.config.set_roi(0, 0, self.config.width, self.config.height)
+        self._refresh_roi_readout()
+        self.engine.apply(self.config)
         self.statusBar().showMessage("Searching the whole frame again", 4000)
 
     def _refresh_curve(self) -> None:

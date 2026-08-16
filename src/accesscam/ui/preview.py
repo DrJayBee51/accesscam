@@ -22,13 +22,28 @@ MARKER = QColor(90, 200, 120)
 MARKER_LOST = QColor(220, 90, 80)
 ROI_COLOUR = QColor(90, 160, 235)
 ROI_DRAFT = QColor(150, 200, 255)
+HANDLE_FILL = QColor(150, 200, 255)
+HANDLE_EDGE = QColor(20, 24, 30)
 OUTSIDE = QColor(0, 0, 0, 110)
 
-# A drag shorter than this is a click that slipped, not a region. Below it the
-# drag is discarded: a stray press while the cursor is live would otherwise
-# leave a box too small to contain the marker, and tracking would stop dead
-# with no obvious cause.
+# A drag shorter than this is a click that slipped, not a region. Below it a
+# newly drawn box is discarded: a stray press while the cursor is live would
+# otherwise leave a box too small to hold the marker, and tracking would stop
+# dead with no obvious cause.
 MIN_DRAG_PX = 24
+
+# Handles are drawn smaller than they can be grabbed. Making the target larger
+# than the mark is worth a great deal to someone aiming with their head, and
+# costs nothing to someone aiming with a mouse.
+HANDLE_DRAW = 6
+HANDLE_GRAB = 16
+
+# How far the arrow keys move the box, as a fraction of a step. The keyboard
+# path exists because dragging is the hardest gesture available to a
+# head-tracked cursor, and a region that can only be set by dragging would be
+# unreachable exactly when tracking is misbehaving.
+NUDGE_PX = 5
+NUDGE_FINE_PX = 1
 
 
 class PreviewWidget(QWidget):
@@ -40,13 +55,20 @@ class PreviewWidget(QWidget):
         super().__init__(parent)
         self.setMinimumSize(320, 240)
         self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMouseTracking(True)  # so corners can respond to hover
         self._image: QImage | None = None
         self._frame_size = (640, 480)
         self._position: tuple[float, float] | None = None
         self._tracking = False
         self._roi: tuple[int, int, int, int] | None = None
-        self._drag_from: QPointF | None = None
-        self._drag_to: QPointF | None = None
+        # Drag state. `_mode` is None, "new", "move", or a corner index 0-3
+        # ordered top-left, top-right, bottom-left, bottom-right.
+        self._mode: str | int | None = None
+        self._anchor: tuple[int, int] | None = None
+        self._grab_offset: tuple[int, int] = (0, 0)
+        self._before_drag: tuple[int, int, int, int] | None = None
+        self._hover_corner: int | None = None
 
     def update_frame(
         self,
@@ -120,14 +142,25 @@ class PreviewWidget(QWidget):
                     if band.width() > 0 and band.height() > 0:
                         painter.drawRect(band)
 
-            painter.setPen(QPen(ROI_COLOUR, 2, Qt.PenStyle.DashLine))
+            active = self._mode is not None
+            painter.setPen(
+                QPen(ROI_DRAFT if active else ROI_COLOUR, 2, Qt.PenStyle.SolidLine)
+                if active
+                else QPen(ROI_COLOUR, 2, Qt.PenStyle.DashLine)
+            )
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(box)
 
-        if self._drag_from is not None and self._drag_to is not None:
-            painter.setPen(QPen(ROI_DRAFT, 2, Qt.PenStyle.SolidLine))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(QRectF(self._drag_from, self._drag_to).normalized())
+            # Corner handles. Drawn last so they sit above the outline, and
+            # enlarged on hover so it is obvious which one is about to be taken.
+            for index, corner in enumerate(
+                (box.topLeft(), box.topRight(), box.bottomLeft(), box.bottomRight())
+            ):
+                lit = index == self._hover_corner or index == self._mode
+                size = HANDLE_DRAW + (2 if lit else 0)
+                painter.setPen(QPen(HANDLE_EDGE, 1))
+                painter.setBrush(HANDLE_FILL if lit else ROI_COLOUR)
+                painter.drawRect(QRectF(corner.x() - size, corner.y() - size, size * 2, size * 2))
 
         if self._position is not None:
             colour = MARKER if self._tracking else MARKER_LOST
@@ -153,7 +186,7 @@ class PreviewWidget(QWidget):
                 QPointF(centre.x(), centre.y() + 5), QPointF(centre.x(), centre.y() + 20)
             )
 
-    # -- dragging a region -------------------------------------------------
+    # -- editing the region ------------------------------------------------
 
     def _to_frame(self, point: QPointF) -> tuple[int, int]:
         """Widget coordinates to frame pixels, clamped to the frame."""
@@ -163,28 +196,150 @@ class PreviewWidget(QWidget):
         y = (point.y() - target.top()) / max(target.height(), 1) * height
         return (max(0, min(int(round(x)), width - 1)), max(0, min(int(round(y)), height - 1)))
 
+    def _box_rect(self) -> QRectF | None:
+        """The region in widget coordinates."""
+        if self._roi is None:
+            return None
+        target = self._fit()
+        width, height = self._frame_size
+        x, y, w, h = self._roi
+        return QRectF(
+            target.left() + x / width * target.width(),
+            target.top() + y / height * target.height(),
+            w / width * target.width(),
+            h / height * target.height(),
+        )
+
+    def _corners(self) -> list[QPointF]:
+        box = self._box_rect()
+        if box is None:
+            return []
+        return [box.topLeft(), box.topRight(), box.bottomLeft(), box.bottomRight()]
+
+    def _corner_at(self, point: QPointF) -> int | None:
+        for index, corner in enumerate(self._corners()):
+            if (
+                abs(corner.x() - point.x()) <= HANDLE_GRAB
+                and abs(corner.y() - point.y()) <= HANDLE_GRAB
+            ):
+                return index
+        return None
+
+    def _commit(self, x0: int, y0: int, x1: int, y1: int) -> None:
+        """Publish a region from two opposite corners, in frame pixels."""
+        left, right = sorted((x0, x1))
+        top, bottom = sorted((y0, y1))
+        self._roi = (left, top, max(right - left, 1), max(bottom - top, 1))
+        self.update()
+        self.roiChanged.emit(*self._roi)
+
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt's naming
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_from = event.position()
-            self._drag_to = event.position()
-            self.update()
-
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt's naming
-        if self._drag_from is not None:
-            self._drag_to = event.position()
-            self.update()
-
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt's naming
-        if event.button() != Qt.MouseButton.LeftButton or self._drag_from is None:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
-        start, end = self._drag_from, event.position()
-        self._drag_from = self._drag_to = None
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+        point = event.position()
+        self._before_drag = self._roi
+        box = self._box_rect()
+
+        corner = self._corner_at(point)
+        if corner is not None and self._roi is not None:
+            # Anchor the opposite corner and drag this one against it.
+            x, y, w, h = self._roi
+            opposite = {0: (x + w, y + h), 1: (x, y + h), 2: (x + w, y), 3: (x, y)}[corner]
+            self._mode = corner
+            self._anchor = opposite
+        elif box is not None and box.contains(point):
+            self._mode = "move"
+            frame_point = self._to_frame(point)
+            self._grab_offset = (
+                frame_point[0] - self._roi[0],
+                frame_point[1] - self._roi[1],
+            )
+        else:
+            self._mode = "new"
+            self._anchor = self._to_frame(point)
         self.update()
 
-        box = QRectF(start, end).normalized()
-        if box.width() < MIN_DRAG_PX or box.height() < MIN_DRAG_PX:
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt's naming
+        point = event.position()
+
+        if self._mode is None:
+            hover = self._corner_at(point)
+            if hover != self._hover_corner:
+                self._hover_corner = hover
+                self.setCursor(
+                    Qt.CursorShape.SizeFDiagCursor
+                    if hover in (0, 3)
+                    else Qt.CursorShape.SizeBDiagCursor
+                    if hover in (1, 2)
+                    else Qt.CursorShape.CrossCursor
+                )
+                self.update()
             return
 
-        x0, y0 = self._to_frame(box.topLeft())
-        x1, y1 = self._to_frame(box.bottomRight())
-        self.roiChanged.emit(x0, y0, max(x1 - x0, 1), max(y1 - y0, 1))
+        x, y = self._to_frame(point)
+        if self._mode == "move" and self._roi is not None:
+            width, height = self._frame_size
+            _, _, w, h = self._roi
+            left = max(0, min(x - self._grab_offset[0], width - w))
+            top = max(0, min(y - self._grab_offset[1], height - h))
+            self._commit(left, top, left + w, top + h)
+        elif self._anchor is not None:
+            self._commit(self._anchor[0], self._anchor[1], x, y)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt's naming
+        if event.button() != Qt.MouseButton.LeftButton or self._mode is None:
+            return
+
+        drawn_new = self._mode == "new"
+        self._mode = None
+        self._anchor = None
+
+        # Only a *newly drawn* box is second-guessed. Resizing an existing one
+        # down to nothing is a deliberate act; a stray press that travels four
+        # pixels is not, and it would leave a region too small to hold the
+        # marker with no visible cause.
+        if drawn_new and self._roi is not None:
+            target = self._fit()
+            width, height = self._frame_size
+            on_screen_w = self._roi[2] / width * target.width()
+            on_screen_h = self._roi[3] / height * target.height()
+            if on_screen_w < MIN_DRAG_PX or on_screen_h < MIN_DRAG_PX:
+                self._roi = self._before_drag
+                self.update()
+                if self._roi is not None:
+                    self.roiChanged.emit(*self._roi)
+
+        self._before_drag = None
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt's naming
+        """Arrows move the region; with Shift they resize it from the bottom right."""
+        if self._roi is None:
+            super().keyPressEvent(event)
+            return
+
+        deltas = {
+            Qt.Key.Key_Left: (-1, 0),
+            Qt.Key.Key_Right: (1, 0),
+            Qt.Key.Key_Up: (0, -1),
+            Qt.Key.Key_Down: (0, 1),
+        }
+        if event.key() not in deltas:
+            super().keyPressEvent(event)
+            return
+
+        modifiers = event.modifiers()
+        amount = NUDGE_FINE_PX if modifiers & Qt.KeyboardModifier.ControlModifier else NUDGE_PX
+        dx, dy = deltas[event.key()]
+        dx, dy = dx * amount, dy * amount
+        x, y, w, h = self._roi
+        width, height = self._frame_size
+
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
+            self._commit(
+                x, y, max(x + 1, min(x + w + dx, width)), max(y + 1, min(y + h + dy, height))
+            )
+        else:
+            left = max(0, min(x + dx, width - w))
+            top = max(0, min(y + dy, height - h))
+            self._commit(left, top, left + w, top + h)
