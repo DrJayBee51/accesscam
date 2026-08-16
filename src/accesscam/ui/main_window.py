@@ -179,14 +179,26 @@ class MainWindow(QMainWindow):
 
     # -- construction ------------------------------------------------------
 
-    def _scrolling(self, widgets: list[QWidget]) -> QScrollArea:
-        holder = QWidget()
-        column = QVBoxLayout(holder)
-        column.setContentsMargins(4, 4, 12, 4)
+    def _scrolling(self, widgets: list[QWidget], card: bool = False) -> QScrollArea:
+        inner = QFrame()
+        if card:
+            inner.setObjectName("card")
+            inner.setContentsMargins(0, 0, 0, 0)
+        column = QVBoxLayout(inner)
+        column.setContentsMargins(*((14, 12, 14, 14) if card else (4, 4, 12, 4)))
         column.setSpacing(16)
         for widget in widgets:
             column.addWidget(widget)
-        column.addStretch(1)
+
+        # The card hugs its content, with the spare height below it rather than
+        # inside it, so it ends at the same kind of edge the curve card does
+        # instead of stretching to the bottom of the tab.
+        holder = QWidget()
+        outer = QVBoxLayout(holder)
+        outer.setContentsMargins(0, 0, 8, 0)
+        outer.setSpacing(0)
+        outer.addWidget(inner)
+        outer.addStretch(1)
 
         area = QScrollArea()
         area.setWidgetResizable(True)
@@ -358,7 +370,8 @@ class MainWindow(QMainWindow):
                     help_text="Over-travel banked at a screen edge, so you can re-centre "
                     "your head. 0 disables it.",
                 ),
-            ]
+            ],
+            card=True,
         )
         controls.setMinimumWidth(380)
         controls.setMaximumWidth(440)
