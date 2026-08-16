@@ -28,6 +28,8 @@ from PySide6.QtWidgets import QApplication
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from accesscam import camera as camera_module  # noqa: E402
+from accesscam.camera import DeviceInfo  # noqa: E402
 from accesscam.config import Config  # noqa: E402
 from accesscam.engine import Engine  # noqa: E402
 from accesscam.mouse import CursorController  # noqa: E402
@@ -39,6 +41,16 @@ TABS = [
     (0, "accesscam-1-camera-and-marker.png"),
     (1, "accesscam-2-cursor-movement.png"),
     (2, "accesscam-3-application.png"),
+]
+
+PICKER = "accesscam-4-camera-picker.png"
+
+# What the picker would find on a laptop with the IR camera plugged in: the
+# built-in webcam holding index 0, which is precisely the situation that used
+# to end a first run.
+DEMO_DEVICES = [
+    DeviceInfo(index=0, width=640, height=480, codec="YUY2"),
+    DeviceInfo(index=1, width=1920, height=1080, codec="MJPG"),
 ]
 
 # Settings chosen to show the features rather than to be anyone's defaults: a
@@ -102,9 +114,33 @@ def main() -> int:
         window.grab().save(str(out / name))
         print(f"  {out / name}")
 
+    _shoot_picker(app, out)
+
     engine.stop()
     print(f"\n{window.width()} x {window.height()}")
     return 0
+
+
+def _shoot_picker(app: QApplication, out: Path) -> None:
+    """The camera picker, which is otherwise only visible by breaking a config.
+
+    The probe is stubbed rather than run. It would open every real camera on
+    the machine, take several seconds, and produce a different picture on every
+    computer this is run on.
+    """
+    from accesscam.ui.first_run import CameraPicker
+
+    camera_module.probe_devices = lambda *args, **kwargs: list(DEMO_DEVICES)
+
+    picker = CameraPicker(Config(device=0))
+    picker.show()
+    picker.scan()
+    for _ in range(4):
+        app.processEvents()
+
+    picker.grab().save(str(out / PICKER))
+    print(f"  {out / PICKER}")
+    picker.close()
 
 
 if __name__ == "__main__":

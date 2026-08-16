@@ -969,6 +969,7 @@ def launch(
     from accesscam.hotkeys import create_listener, parse_hotkey
     from accesscam.mouse import CursorController, create_backend
     from accesscam.mouse.fake import RecordingMouse
+    from accesscam.ui.first_run import choose_camera
 
     # Before QApplication: creating the Windows backend is what makes the
     # process per-monitor DPI aware, and Qt adopts that rather than imposing
@@ -992,10 +993,15 @@ def launch(
     try:
         camera = build_camera(config, wait=wait_for_camera)
     except CameraError as exc:
+        # Not a failure to report and exit on. The stored index is simply wrong
+        # for this machine more often than not on a first run, and the answer -
+        # a list of what is actually connected - is a dialog away.
         log.error("%s", exc)
         print(f"error: {exc}", file=sys.stderr)
-        QMessageBox.critical(None, "AccessCam could not start", str(exc))
-        return 1
+        camera = choose_camera(config, config_file)
+        if camera is None:
+            log.info("no camera chosen - exiting")
+            return 1
 
     engine = Engine(config, camera, cursor)
     window = MainWindow(engine, config, config_file)

@@ -238,6 +238,13 @@ where it was. On top of that, all ✅:
   window hiding to it rather than quitting
 - *Application* tab: camera selection with rescan, start-minimised, start at
   logon, and a confirmed Quit
+- A **first-run camera picker** (2026-08-16). The picker in the Application tab
+  sat behind a successful start, so a machine where the stored index is wrong —
+  which is most machines on a first run, since `device` defaults to 0 and a
+  built-in webcam habitually takes it — ended at "could not start" with no way
+  past. Failing to open the camera now offers the list instead of exiting, and
+  remembers the answer. Operable entirely from the keyboard, because the person
+  meeting this dialog does not have a working pointer yet
 
 **Launch-at-login is a scheduled task, not the usual registry Run key.**
 AccessCam wants to be elevated (UIPI, see RUNNING.md) and a Run entry cannot
@@ -292,6 +299,27 @@ camera is captive.
 ### M4 — v1.0 release (Windows)
 PyInstaller one-folder build, versioned GitHub Release, install/setup guide
 with photos, printable STL + filter/dot instructions published in `hardware/`.
+
+**What stands between the repo and something installable** (surveyed
+2026-08-16, in the order worth doing):
+
+1. ~~A first run cannot get past a camera it fails to open.~~ ✅ Done — see M3.
+2. **The window never mentions elevation.** `warn_if_not_elevated` is only
+   called on the headless path, where it prints to a console. A packaged app
+   has none, so someone who double-clicks the exe gets an install where the
+   cursor moves but hover-driven UI silently ignores it — the failure that took
+   longest to attribute the first time. It needs saying in the window.
+3. **Single-instance detection**, already listed under M3. A second copy
+   currently waits a minute for a camera the first one holds and then reports
+   it as a hardware problem.
+4. **The build itself.** No spec file, icon, or release job exists yet.
+   PyInstaller 6.22.1 supports the 3.14 venv, so the risk table's "pin to 3.12"
+   contingency looks unnecessary; `startup.executable()` already handles being
+   frozen, so the logon task needs no change.
+5. **The binary will be unsigned**, so SmartScreen will warn on first launch and
+   the install guide has to say so plainly rather than let it look like malware.
+6. **Nothing reports a version** — no `--version`, no About. A released artifact
+   has to be able to say which one it is.
 
 ### M5 — v2 features
 Dwell clicking (dwell time, click type, visual countdown), calibration wizard,

@@ -94,6 +94,18 @@ schtasks /create /tn AccessCam /rl highest /sc onlogon /f `
   /tr "<path>\.venv\Scripts\accesscam.exe"
 ```
 
+## If the camera number is wrong
+
+With `--ui`, AccessCam does not give up when it cannot open the camera in the
+config: it scans for what is connected and offers the list, with the IR camera
+marked as the one granting 1920×1080. Choose it and the answer is saved, so the
+dialog appears once. The list is fully keyboard-operable — arrows and Enter —
+since anyone meeting it does not have a working pointer yet.
+
+Headless (`python -m accesscam` with no `--ui`) still exits, deliberately:
+there is a console right there, and `--list-devices` answers the same question
+without a window.
+
 ## 6. First light
 
 ```powershell
