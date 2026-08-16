@@ -26,30 +26,43 @@ RING = QColor(232, 234, 240)
 
 ICON_PX = 64  # drawn large and scaled down, so it stays sharp on any DPI
 
+# Every dimension as a fraction of the canvas, so the same glyph can be drawn
+# at 16px for a tray and at 256px for an application icon without redrawing it.
+_RING_RADIUS = 0.375
+_RING_WIDTH = 0.09375
+_DOT_RADIUS = 0.203125
 
-def marker_icon(colour: QColor) -> QIcon:
-    """The tracked marker as the tray glyph: a ring with a dot at its centre.
 
-    The same shape the preview draws over the tracked point, so the tray and
-    the window are visibly talking about the same thing.
-    """
-    pixmap = QPixmap(ICON_PX, ICON_PX)
+def marker_pixmap(colour: QColor, size: int = ICON_PX) -> QPixmap:
+    """The tracked marker: a ring with a dot at its centre, at any size."""
+    pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
 
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-    centre = QPoint(ICON_PX // 2, ICON_PX // 2)
-    painter.setPen(QPen(RING, 6))
+    centre = QPoint(size // 2, size // 2)
+    ring = round(size * _RING_RADIUS)
+    painter.setPen(QPen(RING, round(size * _RING_WIDTH)))
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.drawEllipse(centre, 24, 24)
+    painter.drawEllipse(centre, ring, ring)
 
+    dot = round(size * _DOT_RADIUS)
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(colour)
-    painter.drawEllipse(centre, 13, 13)
+    painter.drawEllipse(centre, dot, dot)
     painter.end()
 
-    return QIcon(pixmap)
+    return pixmap
+
+
+def marker_icon(colour: QColor) -> QIcon:
+    """The tray glyph.
+
+    The same shape the preview draws over the tracked point, so the tray and
+    the window are visibly talking about the same thing.
+    """
+    return QIcon(marker_pixmap(colour))
 
 
 class Tray(QSystemTrayIcon):

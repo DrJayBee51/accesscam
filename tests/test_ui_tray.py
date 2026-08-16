@@ -34,6 +34,19 @@ def test_the_icon_is_drawn_not_loaded():
     assert icon.availableSizes()
 
 
+def test_the_glyph_draws_at_any_size():
+    # The application icon is the same drawing at 16px and 256px. Every
+    # dimension is a fraction of the canvas so neither has to be resampled -
+    # a 2px ring survives no resampler.
+    from accesscam.ui.tray import marker_pixmap
+
+    for size in (16, 64, 256):
+        pixmap = marker_pixmap(ACTIVE, size)
+        assert pixmap.size().width() == size
+        centre = pixmap.toImage().pixel(size // 2, size // 2)
+        assert QColor(centre) == ACTIVE
+
+
 def test_the_icon_colour_follows_the_pause_state(window):
     tray, _ = build_tray(window)
 

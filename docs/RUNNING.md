@@ -94,6 +94,43 @@ schtasks /create /tn AccessCam /rl highest /sc onlogon /f `
   /tr "<path>\.venv\Scripts\accesscam.exe"
 ```
 
+### Starting it elevated on demand, without a UAC prompt
+
+The task is not only for logon. `schtasks /run /tn AccessCam` starts it
+elevated at any time and asks nobody — creating the task needed administrator
+rights once; running it never does.
+
+That matters more here than convenience. A process cannot elevate itself once
+it is running, so every other route to administrator goes through a UAC prompt
+on the secure desktop — which a head-tracked cursor cannot reach, because
+AccessCam is not elevated at that moment by definition. Anyone who needs this
+application to move their pointer would be stranded at a dialog they cannot
+click. The scheduled task is the only route that never asks.
+
+`tools/launch-elevated.vbs` is that one line, plus a message box if the task is
+missing rather than a silent no-op. Make a shortcut to it:
+
+```powershell
+$repo = "<path to the repo>"
+$shell = New-Object -ComObject WScript.Shell
+$lnk = $shell.CreateShortcut([IO.Path]::Combine(
+    [Environment]::GetFolderPath('Programs'), 'AccessCam.lnk'))
+$lnk.TargetPath = "$env:SystemRoot\System32\wscript.exe"
+$lnk.Arguments = "`"$repo\tools\launch-elevated.vbs`""
+$lnk.IconLocation = "$repo\assets\accesscam.ico,0"
+$lnk.Save()
+```
+
+Then pin it to the taskbar or the Start menu. `wscript` rather than a shortcut
+straight to `schtasks.exe` only so that no console window flashes up.
+
+If Windows Script Host is disabled by policy — plausible on a managed work
+machine — point the shortcut at `schtasks.exe` with arguments
+`/run /tn AccessCam` instead and accept the flash.
+
+`assets/accesscam.ico` is generated from the same glyph the tray draws, so the
+two cannot drift apart: `python tools/make_icon.py assets/accesscam.ico`.
+
 ## If the camera number is wrong
 
 With `--ui`, AccessCam does not give up when it cannot open the camera in the
