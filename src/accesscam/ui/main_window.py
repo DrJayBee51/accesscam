@@ -126,6 +126,8 @@ QSlider::handle:horizontal {
 QSlider::handle:horizontal:hover { background: #ffffff; }
 QSlider::handle:horizontal:focus { background: #ffffff; }
 QScrollArea { border: none; }
+QStatusBar { color: #9a9aa4; }
+QStatusBar::item { border: none; }
 QFrame#card { background: #1c1c21; border: 1px solid #2b2b32; border-radius: 8px; }
 """
 
@@ -175,6 +177,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.tabs, 1)
         layout.addWidget(self._build_footer())
         self.setCentralWidget(root)
+
+        # Build the status bar now rather than letting the first message create
+        # it. QMainWindow makes it on demand, so the first "Saved" or "Reverted"
+        # would appear *after* the window size was fixed - and the height it
+        # needed came out of the cards, which visibly shrank the moment a
+        # message was shown for the first time and never grew back.
+        status = self.statusBar()
+        status.setSizeGripEnabled(False)  # nothing to grip: the window is fixed
 
         self._load_into_controls()
         self._match_card_widths()
