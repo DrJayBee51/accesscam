@@ -952,7 +952,12 @@ class MainWindow(QMainWindow):
         self.hide()
 
 
-def launch(config: Config, config_file: Path | None = None, dry_run: bool = False) -> int:
+def launch(
+    config: Config,
+    config_file: Path | None = None,
+    dry_run: bool = False,
+    wait_for_camera: float = 0.0,
+) -> int:
     """Open the settings window with a live engine behind it."""
     from accesscam.app import build_camera
     from accesscam.camera import CameraError
@@ -967,14 +972,20 @@ def launch(config: Config, config_file: Path | None = None, dry_run: bool = Fals
     backend = RecordingMouse() if dry_run else create_backend()
     cursor = CursorController(backend, clutch=config.clutch)
 
+    # QApplication before the camera, so that failing to find one can be *said*
+    # rather than only returned. Started from the logon task there is no console
+    # attached and nobody sees a non-zero exit: the symptom is simply that the
+    # tray icon never appears, with nothing anywhere to explain why.
+    app = QApplication(sys.argv)
+
     try:
-        camera = build_camera(config)
+        camera = build_camera(config, wait=wait_for_camera)
     except CameraError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        QMessageBox.critical(None, "AccessCam could not start", str(exc))
         return 1
 
     engine = Engine(config, camera, cursor)
-    app = QApplication(sys.argv)
     window = MainWindow(engine, config, config_file)
 
     tray = _build_tray(app, window, engine, config, config_file)

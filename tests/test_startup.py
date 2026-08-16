@@ -35,8 +35,19 @@ def test_a_console_script_launcher_is_run_directly(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "executable", str(launcher))
 
     command = startup.executable()
-    assert command == f'"{launcher}" --ui'
+    assert command.startswith(f'"{launcher}" --ui')
     assert "-m accesscam" not in command
+
+
+def test_the_logon_command_waits_for_the_camera(tmp_path, monkeypatch):
+    # Without this the tray icon silently never appears: the logon trigger beats
+    # a USB camera's enumeration, the open fails and AccessCam exits.
+    console = tmp_path / "python.exe"
+    console.write_text("")
+    monkeypatch.setattr(sys, "executable", str(console))
+
+    assert f"--wait-for-camera {startup.CAMERA_WAIT_SECONDS}" in startup.executable()
+    assert startup.CAMERA_WAIT_SECONDS > 0
 
 
 def test_the_command_is_quoted_so_spaces_survive(tmp_path, monkeypatch):

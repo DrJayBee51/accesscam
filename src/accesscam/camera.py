@@ -34,6 +34,11 @@ EXPOSURE_MAX = 0
 _MANUAL_EXPOSURE_VALUES = (0.25, 1.0)
 _AUTO_EXPOSURE_VALUES = (0.75, 0.0)
 
+# How long to leave between attempts when waiting for a camera to appear.
+# Opening a device that is not there already costs the better part of a second
+# under DirectShow, so this is a pause between slow calls, not a busy loop.
+_RETRY_INTERVAL = 1.0
+
 
 def default_backend() -> int:
     """Return the capture backend that behaves best on this platform."""
@@ -74,13 +79,30 @@ class CameraSource:
 
     # -- lifecycle ---------------------------------------------------------
 
-    def open(self) -> None:
-        cap = cv2.VideoCapture(self.settings.device, self.settings.resolved_backend())
-        if not cap.isOpened():
-            raise CameraError(
-                f"Could not open camera device {self.settings.device}. "
-                "Check that it is connected and not in use by another application."
-            )
+    def open(self, wait: float = 0.0) -> None:
+        """Open the camera, optionally waiting up to `wait` seconds for it.
+
+        Waiting exists for one situation: starting at logon. The logon trigger
+        fires as soon as the desktop appears, which on a USB camera is before
+        the device has finished enumerating - so the very first open fails on a
+        camera that is plugged in and perfectly healthy a few seconds later.
+        Default is not to wait, because someone at a terminal who mistyped the
+        device index wants to be told now, not in a minute.
+        """
+        deadline = time.monotonic() + wait
+        while True:
+            cap = cv2.VideoCapture(self.settings.device, self.settings.resolved_backend())
+            if cap.isOpened():
+                break
+            # Release rather than leak: a failed VideoCapture still holds a
+            # handle, and retrying for a minute makes that add up.
+            cap.release()
+            if time.monotonic() >= deadline:
+                raise CameraError(
+                    f"Could not open camera device {self.settings.device}. "
+                    "Check that it is connected and not in use by another application."
+                )
+            time.sleep(_RETRY_INTERVAL)
 
         # Order matters, and not the way you would expect. On the Arducam
         # (OV2710) under DirectShow, setting FOURCC *before* the frame size

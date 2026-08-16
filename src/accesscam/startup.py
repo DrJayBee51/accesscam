@@ -38,6 +38,13 @@ def supported() -> bool:
     return sys.platform == "win32"
 
 
+# The logon trigger fires the moment the desktop is up, which beats a USB
+# camera's enumeration. Opening it then fails, and AccessCam exited - so the
+# tray icon never appeared, on a camera that was working fine by the time
+# anyone looked. Waiting a minute costs nothing at logon and covers a slow hub.
+CAMERA_WAIT_SECONDS = 60
+
+
 def executable() -> str:
     """The command the task should run.
 
@@ -46,13 +53,14 @@ def executable() -> str:
     means a black box appearing behind the settings window at every single
     logon, for a program that has a GUI and never prints anything to it.
     """
+    flags = f"--ui --wait-for-camera {CAMERA_WAIT_SECONDS}"
     exe = Path(sys.executable)
     if exe.stem.lower() not in {"python", "pythonw"}:
-        return f'"{exe}" --ui'
+        return f'"{exe}" {flags}'
 
     windowed = exe.with_name("pythonw.exe")
     interpreter = windowed if windowed.exists() else exe
-    return f'"{interpreter}" -m accesscam --ui'
+    return f'"{interpreter}" -m accesscam {flags}'
 
 
 def registered_command() -> str | None:

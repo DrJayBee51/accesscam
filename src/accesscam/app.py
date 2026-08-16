@@ -34,7 +34,7 @@ BACKENDS = {
 STATUS_INTERVAL = 2.0
 
 
-def build_camera(config: Config) -> CameraSource:
+def build_camera(config: Config, wait: float = 0.0) -> CameraSource:
     camera = CameraSource(
         CameraSettings(
             device=config.device,
@@ -44,7 +44,7 @@ def build_camera(config: Config) -> CameraSource:
             backend=BACKENDS.get(config.backend),
         )
     )
-    camera.open()
+    camera.open(wait=wait)
     camera.set_exposure(config.exposure)
     return camera
 
@@ -90,12 +90,12 @@ def warn_if_not_elevated() -> None:
         print("        ignore it. Relaunch from an Administrator terminal.")
 
 
-def run(config: Config, dry_run: bool = False) -> int:
+def run(config: Config, dry_run: bool = False, wait_for_camera: float = 0.0) -> int:
     backend = RecordingMouse() if dry_run else create_backend()
     cursor = CursorController(backend, clutch=config.clutch)
 
     try:
-        camera = build_camera(config)
+        camera = build_camera(config, wait=wait_for_camera)
     except CameraError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -212,6 +212,13 @@ def main() -> int:
         action="store_true",
         help="open the settings window instead of running headless",
     )
+    parser.add_argument(
+        "--wait-for-camera",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="keep retrying the camera for this long before giving up (for logon)",
+    )
     args = parser.parse_args()
 
     if args.list_devices:
@@ -256,6 +263,11 @@ def main() -> int:
             print(f"error: the settings window needs PySide6 ({exc})", file=sys.stderr)
             print("Install it, or run without --ui.", file=sys.stderr)
             return 1
-        return launch(config, args.config, dry_run=args.dry_run)
+        return launch(
+            config,
+            args.config,
+            dry_run=args.dry_run,
+            wait_for_camera=args.wait_for_camera,
+        )
 
-    return run(config, dry_run=args.dry_run)
+    return run(config, dry_run=args.dry_run, wait_for_camera=args.wait_for_camera)
