@@ -44,6 +44,11 @@ from accesscam.ui.preview import PreviewWidget
 
 REFRESH_MS = 33  # ~30Hz, matching the camera rather than outrunning it
 
+# Preview height as a share of the monitor's height. A quarter puts it at
+# 360px on a 1440p screen, which is large enough to grab the region's corner
+# handles with a head-tracked cursor.
+PREVIEW_SHARE = 1 / 4
+
 STYLESHEET = """
 QWidget { background: #17171a; color: #e4e4e8; font-size: 13px; }
 QTabWidget::pane { border: 1px solid #2e2e34; border-radius: 6px; top: -1px; }
@@ -244,14 +249,14 @@ class MainWindow(QMainWindow):
         return page
 
     def _size_preview(self) -> None:
-        """Fix the preview to an eighth of the monitor's height.
+        """Fix the preview to a share of the monitor's height.
 
         Tied to the screen rather than the window so it stays the same physical
         size on every machine, which matters when the same settings are carried
         between a four-screen desktop and a three-screen one.
         """
         screen = self.screen() or QApplication.primaryScreen()
-        height = screen.availableGeometry().height() // 8 if screen else 180
+        height = int(screen.availableGeometry().height() * PREVIEW_SHARE) if screen else 360
         aspect = self.config.width / max(self.config.height, 1)
         self.preview.setFixedSize(int(height * aspect), height)
 
