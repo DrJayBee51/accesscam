@@ -230,24 +230,34 @@ start-minimized and launch-at-login options.
 **Progress (2026-08-16).** The pipeline moved out of `app.run` into
 `engine.py`, which runs it on its own thread and publishes a status snapshot —
 a Qt event loop has to own the main thread, so the pipeline could not stay
-where it was. On top of that: the two-tab window behind `--ui`, live preview
-with a draggable region picker, the acceleration curve plotted live, help
-behind question marks, and the tray icon with start-minimised. ✅
+where it was. On top of that, all ✅:
 
-Still outstanding: **launch-at-login**, the **relative/absolute toggle**, and
-**12 of 29 settings unreachable** from the window — `device`, `backend`,
-`width`, `height`, `fps`, `max_jump`, `d_cutoff`, `invert_x`, `invert_y`,
-`dead_zone`, `max_step`, `hotkey`.
+- The three-tab window behind `--ui`, with live preview, a draggable region
+  picker, the acceleration curve plotted live, and help behind question marks
+- Tray icon that carries state — green driving, red parked — with closing the
+  window hiding to it rather than quitting
+- *Application* tab: camera selection with rescan, start-minimised, start at
+  logon, and a confirmed Quit
 
-`device` is the one that actually blocks anyone else: a new machine cannot pick
-its camera without hand-editing JSON. The first-run camera picker in the `ui/`
-row above is that piece.
+**Launch-at-login is a scheduled task, not the usual registry Run key.**
+AccessCam wants to be elevated (UIPI, see RUNNING.md) and a Run entry cannot
+elevate, so `startup.py` registers `schtasks /rl highest /sc onlogon`. Creating
+it needs admin, so the checkbox reports what is actually registered rather than
+what was asked for. It targets `pythonw.exe` deliberately: `python.exe` is a
+console application and would put a black box behind the window at every logon.
 
-**Launch-at-login is not the usual registry Run key here.** AccessCam wants to
-be elevated (UIPI, see RUNNING.md) and a Run entry cannot elevate, so the
-honest implementation is the scheduled task already documented in RUNNING.md —
-`schtasks /rl highest /sc onlogon` — which itself needs admin to create. Decide
-whether the app offers to create it or the docs simply explain it.
+Still outstanding:
+
+- **The relative/absolute toggle.** Lowest value of what is left — absolute is
+  best-effort and needs a screen-selection decision before a toggle means much.
+- **Eleven settings unreachable** from the window: `backend`, `width`,
+  `height`, `fps`, `max_jump`, `d_cutoff`, `invert_x`, `invert_y`, `dead_zone`,
+  `max_step`, `hotkey`. `invert_x`/`invert_y` are two cheap checkboxes and
+  mount-dependent; the rest are advanced or, in `hotkey`'s case, deferred to M5.
+- **Single-instance detection.** A second instance cannot open the camera and,
+  launched by the logon task under `pythonw` with no console, dies without
+  saying anything. Harmless at logon, but it needs handling before M4 ships to
+  anyone else — either refuse politely or hand focus to the running instance.
 
 **The exit criterion below needs rewording before it can be met.** It asks for
 every setting to be adjustable, but `hotkey` is deferred to M5 and the camera
