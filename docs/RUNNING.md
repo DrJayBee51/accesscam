@@ -359,6 +359,53 @@ Travel range is worth watching while you are in here: it accumulates only while
 the marker is found, so a figure that stays near zero means the track is sitting
 on something stationary rather than on you.
 
+## When it does not start at logon
+
+Read the log first. It is at:
+
+```
+%APPDATA%\AccessCam\accesscam.log
+```
+
+Every run appends to it, and this is the only place a logon start can speak
+from: registered against `pythonw` there is no console, `print` goes nowhere,
+and an unhandled exception disappears with the process. A healthy start looks
+like this, and stops at whichever line it could not get past:
+
+```
+--- starting: --ui --wait-for-camera 60
+elevated: True
+creating the cursor backend
+Qt is up
+camera 1 opened on attempt 4 after 3.2s
+window built
+tray icon shown
+pause hotkey 'f9' registered
+running
+```
+
+`camera 1 opened on attempt 4` is worth watching. Attempt 1 means the camera
+was ready before AccessCam asked; a high number means the USB enumeration race
+is real on this machine and `--wait-for-camera` is what is covering it.
+
+**`LastTaskResult` tells you whether the task even fired**, which separates a
+scheduling problem from an application one in one command:
+
+```powershell
+Get-ScheduledTaskInfo -TaskName AccessCam
+```
+
+A `LastRunTime` matching the logon with `LastTaskResult = 1` means the trigger
+worked and the app died — go to the log. Note that 1 is Python's exit code for
+*any* unhandled exception, so it names nothing on its own.
+
+The Task Scheduler's own Operational log is disabled by default and is worth
+turning on before chasing a scheduling problem (Administrator):
+
+```powershell
+wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+```
+
 ## Known gotchas
 
 **F9 is claimed globally while AccessCam runs.** Nothing else on the system
@@ -377,3 +424,10 @@ counts.
 
 **The camera must be on the machine running AccessCam.** If a monitor is shared
 between machines through a switch, the USB connection has to follow.
+
+**At logon, AccessCam can start before the desktop is finished.** The trigger
+fires within a second of the logon notification, and at that moment the camera
+may still be enumerating and Explorer may not have created the notification
+area yet. Both are waited for, for `--wait-for-camera` seconds, rather than
+being asked about once — which is why the tray icon sometimes appears a few
+seconds after the desktop rather than with it.

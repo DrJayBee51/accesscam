@@ -20,6 +20,7 @@ from accesscam.camera import CameraError, CameraSettings, CameraSource, probe_de
 from accesscam.config import Config, config_path
 from accesscam.engine import Engine
 from accesscam.hotkeys import create_listener, parse_hotkey
+from accesscam.log import log, start_logging
 from accesscam.mouse import CursorController, create_backend
 from accesscam.mouse.fake import RecordingMouse
 
@@ -176,6 +177,11 @@ def run(config: Config, dry_run: bool = False, wait_for_camera: float = 0.0) -> 
 
 
 def main() -> int:
+    # Before anything else, including argument parsing: started at logon there
+    # is no console, and a failure that happens before the log is open is a
+    # failure nobody will ever see.
+    log_file = start_logging()
+
     parser = argparse.ArgumentParser(prog="accesscam", description=__doc__.splitlines()[0])
     parser.add_argument("--config", type=Path, default=None, help="path to a config file")
     parser.add_argument("--device", type=int, default=None, help="camera index override")
@@ -221,10 +227,18 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    log.info("--- starting: %s", " ".join(sys.argv[1:]) or "(no arguments)")
+    log.info("running %s", sys.executable)
+    if sys.platform == "win32":
+        from accesscam.mouse.windows import is_elevated
+
+        log.info("elevated: %s", is_elevated())
+
     if args.list_devices:
         return list_devices()
 
     config = Config.load(args.config)
+    log.info("config: %s", args.config or config_path())
     if args.device is not None:
         config.device = args.device
     if args.hotkey is not None:
@@ -252,6 +266,8 @@ def main() -> int:
         return 0
 
     print(f"config: {args.config or config_path()}")
+    if log_file is not None:
+        print(f"log:    {log_file}")
 
     if args.ui:
         # Imported here, not at module scope: the headless path is the one
@@ -260,14 +276,18 @@ def main() -> int:
         try:
             from accesscam.ui import launch
         except ImportError as exc:
+            log.error("PySide6 is unusable: %s", exc)
             print(f"error: the settings window needs PySide6 ({exc})", file=sys.stderr)
             print("Install it, or run without --ui.", file=sys.stderr)
             return 1
-        return launch(
+        code = launch(
             config,
             args.config,
             dry_run=args.dry_run,
             wait_for_camera=args.wait_for_camera,
         )
+    else:
+        code = run(config, dry_run=args.dry_run, wait_for_camera=args.wait_for_camera)
 
-    return run(config, dry_run=args.dry_run, wait_for_camera=args.wait_for_camera)
+    log.info("--- exiting with %d", code)
+    return code

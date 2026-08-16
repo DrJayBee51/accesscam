@@ -96,6 +96,27 @@ def test_sync_adopts_the_os_cursor_position():
     assert mouse.moves == [(502, -300)]
 
 
+def test_sync_survives_not_being_allowed_to_ask():
+    # GetCursorPos fails when the input desktop is not ours - during logon, and
+    # while the secure desktop is up for a UAC prompt. Raising here would kill
+    # the one launch that has to succeed with nobody watching.
+    class Deaf(RecordingMouse):
+        def position(self):
+            raise OSError(5, "Access is denied")
+
+    mouse = Deaf(bounds=NEGATIVE_ORIGIN, start=(0, 0))
+    cursor = CursorController(mouse)
+
+    assert cursor.position == (
+        float(NEGATIVE_ORIGIN.left + NEGATIVE_ORIGIN.width // 2),
+        float(NEGATIVE_ORIGIN.top + NEGATIVE_ORIGIN.height // 2),
+    )
+
+    # And it can still be driven from there.
+    cursor.move_by(2.0, 0.0)
+    assert mouse.moves == [(1282, -360)]
+
+
 def test_bounds_geometry():
     assert NEGATIVE_ORIGIN.right == 5120
     assert NEGATIVE_ORIGIN.bottom == 1440

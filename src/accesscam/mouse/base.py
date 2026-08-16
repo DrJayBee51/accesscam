@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from accesscam.log import log
+
 # How far past a hard edge the tracked position may travel while the visible
 # cursor stays pinned there, in cursor pixels.
 #
@@ -157,7 +159,18 @@ class CursorController:
         """
         self._bounds = self._backend.bounds()
         self._monitors = self._backend.monitors()
-        x, y = self._backend.position()
+        try:
+            x, y = self._backend.position()
+        except OSError as exc:
+            # Asking where the cursor is fails when the input desktop is not
+            # ours: during logon, and whenever the secure desktop is up for a
+            # UAC prompt. Refusing to start over it would mean the one launch
+            # that has to succeed unattended is the one most likely to fail.
+            # The middle of the desktop is a fine guess, and the next unpause
+            # syncs properly anyway.
+            log.warning("could not read the cursor position (%s) - assuming centre", exc)
+            x = self._bounds.left + self._bounds.width // 2
+            y = self._bounds.top + self._bounds.height // 2
         self._x, self._y = self._bounds.clamp(float(x), float(y))
         self._cursor = (self._x, self._y)
         self._last_sent = (round(self._x), round(self._y))

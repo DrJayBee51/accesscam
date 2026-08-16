@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
 from accesscam import startup
 from accesscam.config import Config, config_path
 from accesscam.engine import Engine
+from accesscam.log import log
 from accesscam.ui.controls import Tuner
 from accesscam.ui.curve import CurveWidget
 from accesscam.ui.help import HelpButton
@@ -71,6 +72,10 @@ RIGHT_CARD_SCALE = 1.35
 # Gap between the two cards on a tab. Named because the Application tab's single
 # card has to span both of them plus this.
 TAB_SPACING = 16
+
+# How often to look for a system tray that was not there at startup. Checking
+# is a single cheap call, and the shell it is waiting for takes seconds.
+_TRAY_RETRY_INTERVAL = 1.0
 
 STYLESHEET = """
 QWidget { background: #17171a; color: #e4e4e8; font-size: 13px; }
@@ -969,60 +974,118 @@ def launch(
     # process per-monitor DPI aware, and Qt adopts that rather than imposing
     # its own if it is already set. The other order leaves the two disagreeing
     # about what a pixel is, on a desktop that really is mixed-DPI.
+    #
+    # It is also the only work that happens with no way to report a failure, so
+    # each step says in the log that it got that far.
+    log.info("creating the cursor backend")
     backend = RecordingMouse() if dry_run else create_backend()
     cursor = CursorController(backend, clutch=config.clutch)
+    log.info("desktop is %s", cursor.bounds)
 
     # QApplication before the camera, so that failing to find one can be *said*
     # rather than only returned. Started from the logon task there is no console
     # attached and nobody sees a non-zero exit: the symptom is simply that the
     # tray icon never appears, with nothing anywhere to explain why.
     app = QApplication(sys.argv)
+    log.info("Qt is up")
 
     try:
         camera = build_camera(config, wait=wait_for_camera)
     except CameraError as exc:
+        log.error("%s", exc)
         print(f"error: {exc}", file=sys.stderr)
         QMessageBox.critical(None, "AccessCam could not start", str(exc))
         return 1
 
     engine = Engine(config, camera, cursor)
     window = MainWindow(engine, config, config_file)
+    log.info("window built")
 
-    tray = _build_tray(app, window, engine, config, config_file)
-    if tray is None or not config.start_minimized:
+    # The camera's patience governs the tray's as well. Both are waiting for
+    # the same thing - a machine that has only just finished logging in - and a
+    # second flag saying the same thing in different words would only ever be
+    # set to the same number.
+    _install_tray(app, window, engine, config, config_file, wait=wait_for_camera)
+    if not config.start_minimized:
         window.show()
 
     listener = None
     try:
         listener = create_listener(parse_hotkey(config.hotkey), engine.pause.toggle)
         listener.start()
+        log.info("pause hotkey %r registered", config.hotkey)
     except Exception as exc:  # noqa: BLE001 - visible, but not fatal with a window
+        log.warning("hotkey %r unavailable: %s", config.hotkey, exc)
         window.statusBar().showMessage(f"Hotkey {config.hotkey!r} unavailable: {exc}")
 
     engine.start()
+    log.info("running")
     try:
         return app.exec()
     finally:
+        log.info("shutting down")
         engine.stop()
         if listener is not None:
             listener.stop()
         camera.close()
 
 
-def _build_tray(
+def _install_tray(
     app: QApplication,
     window: MainWindow,
     engine: Engine,
     config: Config,
     config_file: Path | None,
-) -> Tray | None:
-    """Put AccessCam in the tray, if this desktop has one.
+    wait: float = 0.0,
+) -> None:
+    """Put AccessCam in the tray, waiting for one to exist if need be.
 
-    Returns None when it does not, and the window then behaves as it did
-    before: closing it quits, because there would be nowhere to hide to.
+    The same race the camera loses, lost against a different device. The logon
+    trigger fires the moment the desktop appears - one second after the logon
+    notification, in the run that prompted this - and Explorer has not yet
+    created the taskbar, so `isSystemTrayAvailable` is False for a camera that
+    is perfectly healthy and a shell that is seconds away. Asking once meant no
+    tray icon for the rest of the session.
+
+    So it keeps asking. It also keeps asking after Explorer *crashes*, which
+    happened four minutes into that same boot, since the notification area is
+    rebuilt from scratch when the shell restarts.
     """
+    if _attach_tray(app, window, engine, config, config_file):
+        return
+
+    log.warning("no system tray yet - waiting up to %.0fs for the shell", wait)
+
+    deadline = time.monotonic() + wait
+    timer = QTimer(window)
+    timer.setInterval(int(_TRAY_RETRY_INTERVAL * 1000))
+
+    def retry() -> None:
+        if _attach_tray(app, window, engine, config, config_file):
+            timer.stop()
+            return
+        if time.monotonic() < deadline:
+            return
+        timer.stop()
+        log.error("no system tray appeared - showing the window instead")
+        # Never leave the app with neither a tray icon nor a window: that is
+        # a process the user can see no trace of and cannot quit.
+        window.show()
+
+    timer.timeout.connect(retry)
+    timer.start()
+
+
+def _attach_tray(
+    app: QApplication,
+    window: MainWindow,
+    engine: Engine,
+    config: Config,
+    config_file: Path | None,
+) -> bool:
+    """Build the tray icon if this desktop has a tray. Says whether it did."""
     if not QSystemTrayIcon.isSystemTrayAvailable():
-        return None
+        return False
 
     def quit_now() -> None:
         window.quit_requested = True
@@ -1050,4 +1113,5 @@ def _build_tray(
     # Hiding the window must not end the process now that there is somewhere to
     # hide to. Quit is the tray menu's job.
     app.setQuitOnLastWindowClosed(False)
-    return tray
+    log.info("tray icon shown")
+    return True

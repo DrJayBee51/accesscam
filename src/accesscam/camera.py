@@ -18,6 +18,8 @@ from typing import Self
 import cv2
 import numpy as np
 
+from accesscam.log import log
+
 DEFAULT_WIDTH = 640
 DEFAULT_HEIGHT = 480
 DEFAULT_FPS = 30
@@ -89,20 +91,39 @@ class CameraSource:
         Default is not to wait, because someone at a terminal who mistyped the
         device index wants to be told now, not in a minute.
         """
-        deadline = time.monotonic() + wait
+        started = time.monotonic()
+        deadline = started + wait
+        attempts = 0
         while True:
             cap = cv2.VideoCapture(self.settings.device, self.settings.resolved_backend())
+            attempts += 1
             if cap.isOpened():
                 break
             # Release rather than leak: a failed VideoCapture still holds a
             # handle, and retrying for a minute makes that add up.
             cap.release()
             if time.monotonic() >= deadline:
+                waited = time.monotonic() - started
+                log.error(
+                    "camera %d would not open after %d attempt(s) over %.0fs",
+                    self.settings.device,
+                    attempts,
+                    waited,
+                )
                 raise CameraError(
                     f"Could not open camera device {self.settings.device}. "
                     "Check that it is connected and not in use by another application."
                 )
             time.sleep(_RETRY_INTERVAL)
+
+        # How long the wait actually needed to be is the only way to tell a
+        # generous timeout from a lucky one, so it goes in the log every time.
+        log.info(
+            "camera %d opened on attempt %d after %.1fs",
+            self.settings.device,
+            attempts,
+            time.monotonic() - started,
+        )
 
         # Order matters, and not the way you would expect. On the Arducam
         # (OV2710) under DirectShow, setting FOURCC *before* the frame size
