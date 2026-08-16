@@ -78,7 +78,9 @@ class Tuner(QWidget):
         self._up = QPushButton("+")
         for button in (self._down, self._up):
             button.setObjectName("stepButton")
-            button.setFixedSize(40, 34)
+            # 80% of the original box with the glyph left at its old size, so
+            # the padding shrinks rather than the thing being aimed at.
+            button.setFixedSize(32, 27)
             button.setAutoRepeat(True)
             button.setAutoRepeatDelay(400)
             button.setAutoRepeatInterval(90)

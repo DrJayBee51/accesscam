@@ -11,7 +11,7 @@ moving your head draws the answer to "which part of this am I using".
 from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
 from accesscam.mapper import acceleration_scale
@@ -33,10 +33,14 @@ VMAX = 240.0  # marker px/s across the plot
 # shape at all. A little headroom above 100 keeps the full-gain line off the
 # very top edge.
 SMAX = 105.0
-MARGIN_LEFT = 58
+# Room for the rotated axis title at the far left, then the tick labels, both
+# at the same size as the setting titles beside the plot.
+MARGIN_LEFT = 68
 MARGIN_RIGHT = 16
-MARGIN_TOP = 14
-MARGIN_BOTTOM = 34
+MARGIN_TOP = 16
+MARGIN_BOTTOM = 46
+TITLE_X = 15
+TICK_LEFT = 26
 
 
 class CurveWidget(QWidget):
@@ -88,9 +92,9 @@ class CurveWidget(QWidget):
         def y_of(percent: float) -> float:
             return plot.bottom() - (percent / SMAX) * plot.height()
 
-        small = QFont(self.font())
-        small.setPointSizeF(max(self.font().pointSizeF() - 1.0, 7.0))
-        painter.setFont(small)
+        # The widget's own font, unshrunk, so the plot reads at the same size as
+        # the setting titles beside it rather than looking like a footnote.
+        painter.setFont(self.font())
 
         # Grid and vertical axis
         for value in (0, 25, 50, 75, 100):
@@ -99,7 +103,7 @@ class CurveWidget(QWidget):
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
             painter.setPen(MUTED)
             painter.drawText(
-                QRectF(0, y - 9, MARGIN_LEFT - 10, 18),
+                QRectF(TICK_LEFT, y - 10, MARGIN_LEFT - TICK_LEFT - 10, 20),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 f"{value}%",
             )
@@ -111,22 +115,22 @@ class CurveWidget(QWidget):
             x = x_of(speed)
             painter.setPen(MUTED)
             painter.drawText(
-                QRectF(x - 28, plot.bottom() + 4, 56, 16),
+                QRectF(x - 30, plot.bottom() + 5, 60, 19),
                 Qt.AlignmentFlag.AlignCenter,
                 f"{speed}",
             )
         painter.drawText(
-            QRectF(plot.left(), self.height() - 17, plot.width(), 16),
+            QRectF(plot.left(), self.height() - 21, plot.width(), 20),
             Qt.AlignmentFlag.AlignCenter,
             "marker speed (px/s)",
         )
 
         painter.save()
-        painter.translate(14, plot.center().y())
+        painter.translate(TITLE_X, plot.center().y())
         painter.rotate(-90)
         painter.setPen(MUTED)
         painter.drawText(
-            QRectF(-plot.height() / 2, -8, plot.height(), 16),
+            QRectF(-plot.height() / 2, -10, plot.height(), 20),
             Qt.AlignmentFlag.AlignCenter,
             "% of full gain",
         )

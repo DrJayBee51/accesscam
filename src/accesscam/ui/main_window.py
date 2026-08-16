@@ -49,6 +49,11 @@ REFRESH_MS = 33  # ~30Hz, matching the camera rather than outrunning it
 # handles with a head-tracked cursor.
 PREVIEW_SHARE = 1 / 4
 
+# How much wider the settings columns sit than their content strictly needs.
+# At 1.0 the sliders are squeezed against the step buttons; the extra goes
+# almost entirely into slider length, which is what is being aimed at.
+RIGHT_CARD_SCALE = 1.35
+
 STYLESHEET = """
 QWidget { background: #17171a; color: #e4e4e8; font-size: 13px; }
 /* Labels take the surface behind them, or every one inside a card paints a
@@ -171,6 +176,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self._load_into_controls()
+        self._match_card_widths()
         self._lock_size()
 
         self.timer = QTimer(self)
@@ -216,7 +222,7 @@ class MainWindow(QMainWindow):
         self.preview.roiChanged.connect(self._on_roi_dragged)
         self._size_preview()
 
-        preview_card = QFrame()
+        preview_card = self._preview_card = QFrame()
         preview_card.setObjectName("card")
         preview_layout = QVBoxLayout(preview_card)
         preview_layout.setContentsMargins(14, 12, 14, 14)
@@ -271,9 +277,30 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(12, 12, 12, 12)
         row.setSpacing(16)
 
+        self._camera_controls = controls
         row.addWidget(preview_card)
-        row.addWidget(controls, 1)
+        row.addWidget(controls)
+        row.addStretch(1)
         return page
+
+    def _match_card_widths(self) -> None:
+        """Give the two tabs the same column widths.
+
+        The left cards both take the preview's width, so the curve sits over
+        exactly the ground the preview does and switching tabs does not shift
+        everything sideways. The right cards take a share more than their
+        content strictly needs - at their natural width the sliders are cramped
+        against the step buttons, and a slider too short to aim at is a poor
+        trade for a narrower window.
+        """
+        left = self._preview_card.sizeHint().width()
+        self._preview_card.setFixedWidth(left)
+        self._curve_card.setFixedWidth(left)
+
+        natural = self._camera_controls.widget().sizeHint().width()
+        right = int(natural * RIGHT_CARD_SCALE)
+        self._camera_controls.setFixedWidth(right)
+        self._movement_controls.setFixedWidth(right)
 
     def _lock_size(self) -> None:
         """Fix the window at the size its content needs.
@@ -322,7 +349,7 @@ class MainWindow(QMainWindow):
         # under it. They are the three values that draw the curve, so putting
         # them across the page from it meant looking in one place while
         # changing something in another.
-        curve_card = QFrame()
+        curve_card = self._curve_card = QFrame()
         curve_card.setObjectName("card")
         curve_layout = QVBoxLayout(curve_card)
         curve_layout.setContentsMargins(14, 12, 14, 14)
@@ -415,8 +442,10 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(12, 12, 12, 12)
         row.setSpacing(14)
 
-        row.addWidget(curve_card, 1)
+        self._movement_controls = controls
+        row.addWidget(curve_card)
         row.addWidget(controls)
+        row.addStretch(1)
         return page
 
     def _build_footer(self) -> QWidget:
