@@ -227,6 +227,35 @@ including moving between monitors.
 smoothing slider, acceleration controls, relative/absolute toggle, tray icon,
 start-minimized and launch-at-login options.
 
+**Progress (2026-08-16).** The pipeline moved out of `app.run` into
+`engine.py`, which runs it on its own thread and publishes a status snapshot —
+a Qt event loop has to own the main thread, so the pipeline could not stay
+where it was. On top of that: the two-tab window behind `--ui`, live preview
+with a draggable region picker, the acceleration curve plotted live, help
+behind question marks, and the tray icon with start-minimised. ✅
+
+Still outstanding: **launch-at-login**, the **relative/absolute toggle**, and
+**12 of 29 settings unreachable** from the window — `device`, `backend`,
+`width`, `height`, `fps`, `max_jump`, `d_cutoff`, `invert_x`, `invert_y`,
+`dead_zone`, `max_step`, `hotkey`.
+
+`device` is the one that actually blocks anyone else: a new machine cannot pick
+its camera without hand-editing JSON. The first-run camera picker in the `ui/`
+row above is that piece.
+
+**Launch-at-login is not the usual registry Run key here.** AccessCam wants to
+be elevated (UIPI, see RUNNING.md) and a Run entry cannot elevate, so the
+honest implementation is the scheduled task already documented in RUNNING.md —
+`schtasks /rl highest /sc onlogon` — which itself needs admin to create. Decide
+whether the app offers to create it or the docs simply explain it.
+
+**The exit criterion below needs rewording before it can be met.** It asks for
+every setting to be adjustable, but `hotkey` is deferred to M5 and the camera
+settings cannot be live at all: changing `device`, `width`, `height` or `fps`
+means closing and reopening the capture, which `Engine.apply` deliberately
+refuses. "Every setting that can be changed without reopening the camera" is
+the achievable version.
+
 **No profile management here** — it moved to M5 on 2026-08-15. The single
 settings file is enough for a machine with one user, which is every
 installation that exists. See M5 for the reasoning and the design.

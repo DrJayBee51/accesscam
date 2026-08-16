@@ -186,6 +186,39 @@ file as it stands.
   less comfortable range than horizontal, so it needs less amplification per
   pixel to cover its axis.
 
+## The settings window
+
+```powershell
+.venv\Scripts\accesscam.exe --ui
+```
+
+Two tabs. **Camera & Marker** is everything that changes what the tracker sees —
+exposure, threshold, the blob filters, and the region searched, which is set by
+dragging the corner handles on the preview. **Cursor Movement** is everything
+downstream of finding the dot — the gains, the acceleration curve, smoothing and
+the clutch. Every change applies to the live cursor immediately; nothing needs a
+restart to be felt.
+
+Each setting has a `?` beside it. They open on click rather than on hover,
+because a head-tracked pointer never stops moving and a hover tooltip would
+disappear before it could be read.
+
+Nothing in the window needs a drag. Every value has step buttons worth one click
+each and steps with the arrow keys once focused; the slider is there for when
+the pointer is cooperating. The one exception is the region box, and its
+handles have a grab radius considerably larger than they are drawn.
+
+**It lives in the tray.** The icon is green while the cursor is being driven and
+red while it is parked, so the state is visible with the window closed. Closing
+the window hides it there rather than quitting — ending cursor control with a
+stray click on a title bar is a worse outcome than a window you have to reopen.
+Quit is in the tray menu, along with **Start minimised**, which opens straight
+to the tray on the next run.
+
+Settings are not saved until you press **Save settings**. **Revert to saved**
+puts back whatever is in the file, which is the way out of a session of tuning
+that went nowhere.
+
 ## Safety
 
 The cursor is driven with no window to click on, so **F9 is the way out**. It

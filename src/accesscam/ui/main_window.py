@@ -15,6 +15,7 @@ would be useless exactly when it is needed.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import sys
 import time
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSystemTrayIcon,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -42,6 +44,7 @@ from accesscam.ui.controls import Tuner
 from accesscam.ui.curve import CurveWidget
 from accesscam.ui.help import HelpButton
 from accesscam.ui.preview import PreviewWidget
+from accesscam.ui.tray import Tray
 
 REFRESH_MS = 33  # ~30Hz, matching the camera rather than outrunning it
 
@@ -162,6 +165,12 @@ class MainWindow(QMainWindow):
         self._last_position: tuple[float, float] | None = None
         self._last_time: float | None = None
         self._speed = 0.0
+
+        # Set by whoever owns the tray, if there is one. Without a tray there is
+        # nowhere to hide to, so closing has to mean closing.
+        self.hides_to_tray = False
+        self.quit_requested = False
+        self.tray = None
 
         self.setWindowTitle("AccessCam")
         self.setStyleSheet(STYLESHEET)
@@ -570,6 +579,9 @@ class MainWindow(QMainWindow):
         status = self.engine.status()
 
         paused = status.paused
+        if self.tray is not None:
+            self.tray.set_paused(paused)
+
         state = "paused" if paused else "active"
         if self.state_button.property("state") != state:
             self.state_button.setText("PAUSED  (F9)" if paused else "ACTIVE  (F9)")
@@ -612,8 +624,20 @@ class MainWindow(QMainWindow):
         self._last_position, self._last_time = position, now
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt's naming
-        self.timer.stop()
-        super().closeEvent(event)
+        """Hide to the tray rather than quit, unless quitting was asked for.
+
+        Ending cursor control because of a stray click on a title bar is a
+        considerably worse outcome, for someone using this as their mouse, than
+        a window they have to reopen. Quit lives in the tray menu, where it has
+        to be chosen.
+        """
+        if self.quit_requested or not self.hides_to_tray:
+            self.timer.stop()
+            super().closeEvent(event)
+            return
+
+        event.ignore()
+        self.hide()
 
 
 def launch(config: Config, config_file: Path | None = None, dry_run: bool = False) -> int:
@@ -640,7 +664,10 @@ def launch(config: Config, config_file: Path | None = None, dry_run: bool = Fals
     engine = Engine(config, camera, cursor)
     app = QApplication(sys.argv)
     window = MainWindow(engine, config, config_file)
-    window.show()
+
+    tray = _build_tray(app, window, engine, config, config_file)
+    if tray is None or not config.start_minimized:
+        window.show()
 
     listener = None
     try:
@@ -657,3 +684,47 @@ def launch(config: Config, config_file: Path | None = None, dry_run: bool = Fals
         if listener is not None:
             listener.stop()
         camera.close()
+
+
+def _build_tray(
+    app: QApplication,
+    window: MainWindow,
+    engine: Engine,
+    config: Config,
+    config_file: Path | None,
+) -> Tray | None:
+    """Put AccessCam in the tray, if this desktop has one.
+
+    Returns None when it does not, and the window then behaves as it did
+    before: closing it quits, because there would be nowhere to hide to.
+    """
+    if not QSystemTrayIcon.isSystemTrayAvailable():
+        return None
+
+    def quit_now() -> None:
+        window.quit_requested = True
+        app.quit()
+
+    def remember_minimised(checked: bool) -> None:
+        config.start_minimized = checked
+        # A failure here is not worth interrupting for: the setting still
+        # applies to this run, and the window's own Save reports properly.
+        with contextlib.suppress(OSError):
+            config.save(config_file)
+
+    tray = Tray(
+        window=window,
+        on_toggle_pause=engine.pause.toggle,
+        on_quit=quit_now,
+        on_start_minimised=remember_minimised,
+        start_minimised=config.start_minimized,
+        parent=window,
+    )
+    tray.show()
+
+    window.tray = tray
+    window.hides_to_tray = True
+    # Hiding the window must not end the process now that there is somewhere to
+    # hide to. Quit is the tray menu's job.
+    app.setQuitOnLastWindowClosed(False)
+    return tray

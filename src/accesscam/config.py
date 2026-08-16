@@ -115,6 +115,10 @@ class Config:
 
     # Control
     hotkey: str = DEFAULT_HOTKEY
+    # Open straight to the tray with no window. Off by default: someone who has
+    # just installed this needs to see the preview to aim the camera, and a
+    # first run with no window at all looks like nothing happened.
+    start_minimized: bool = False
 
     def roi(self) -> tuple[int, int, int, int]:
         """The (x, y, w, h) region searched, always a real box.
