@@ -39,6 +39,7 @@ from accesscam.config import Config, config_path
 from accesscam.engine import Engine
 from accesscam.ui.controls import Tuner
 from accesscam.ui.curve import CurveWidget
+from accesscam.ui.help import HelpButton
 from accesscam.ui.preview import PreviewWidget
 
 REFRESH_MS = 33  # ~30Hz, matching the camera rather than outrunning it
@@ -65,8 +66,25 @@ QLabel#tunerValue {
 QLabel#sectionHeading {
     color: #8c8c96; font-size: 11px; font-weight: 700; letter-spacing: 1px;
 }
-QLabel#stat { font-family: Consolas, monospace; color: #c4c4cc; }
-QLabel#stateBadge { font-weight: 700; font-size: 15px; padding: 6px 16px; border-radius: 5px; }
+QPushButton#stateButton {
+    font-weight: 700; font-size: 14px; letter-spacing: 1px; padding: 9px 18px;
+}
+QPushButton#stateButton[state="active"] {
+    background: #1e4023; border-color: #2f7038; color: #86e39a;
+}
+QPushButton#stateButton[state="active"]:hover { background: #255030; }
+QPushButton#stateButton[state="paused"] {
+    background: #4a2020; border-color: #7a3232; color: #ff9d94;
+}
+QPushButton#stateButton[state="paused"]:hover { background: #5c2828; }
+QToolButton#helpButton {
+    background: #24242b; border: 1px solid #3d3d47; border-radius: 10px;
+    color: #8fbdf0; font-weight: 700; font-size: 12px;
+}
+QToolButton#helpButton:hover { background: #2f3a48; border-color: #6aa9ea; }
+QToolButton#helpButton:focus { border: 2px solid #6aa9ea; }
+QFrame#helpPopup { background: #23232a; border: 1px solid #414150; border-radius: 7px; }
+QLabel#helpText { color: #d6d6de; font-size: 12px; background: transparent; }
 QPushButton {
     background: #2a2a31; border: 1px solid #3a3a43; border-radius: 5px;
     padding: 8px 16px; color: #e4e4e8;
@@ -76,11 +94,17 @@ QPushButton:focus { border: 2px solid #6aa9ea; }
 QPushButton#stepButton { font-size: 19px; font-weight: 700; padding: 0px; }
 QPushButton#primary { background: #2f6fc0; border-color: #2f6fc0; font-weight: 600; }
 QPushButton#primary:hover { background: #3a82da; }
-QSlider::groove:horizontal { height: 5px; background: #34343c; border-radius: 3px; }
+/* One flat groove the whole way across, with the handle as the only mark.
+   A filled sub-page made each slider look like a different control depending
+   on where its value happened to sit. */
+QSlider::groove:horizontal { height: 4px; background: #3c3c46; border-radius: 2px; }
+QSlider::sub-page:horizontal { background: #3c3c46; border-radius: 2px; }
+QSlider::add-page:horizontal { background: #3c3c46; border-radius: 2px; }
 QSlider::handle:horizontal {
-    background: #6aa9ea; width: 20px; height: 20px;
-    margin: -8px 0; border-radius: 10px;
+    background: #6aa9ea; width: 14px; height: 20px;
+    margin: -8px 0; border-radius: 3px;
 }
+QSlider::handle:horizontal:hover { background: #8dc2ff; }
 QSlider:focus::handle:horizontal { background: #8dc2ff; }
 QScrollArea { border: none; }
 QFrame#card { background: #1c1c21; border: 1px solid #2b2b32; border-radius: 8px; }
@@ -126,10 +150,9 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(root)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(14)
-        layout.addWidget(self._build_header())
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_camera_tab(), "Camera && marker")
+        self.tabs.addTab(self._build_camera_tab(), "Camera && Marker")
         self.tabs.addTab(self._build_movement_tab(), "Cursor movement")
         layout.addWidget(self.tabs, 1)
         layout.addWidget(self._build_footer())
@@ -142,30 +165,6 @@ class MainWindow(QMainWindow):
         self.timer.start(REFRESH_MS)
 
     # -- construction ------------------------------------------------------
-
-    def _build_header(self) -> QWidget:
-        card = QFrame()
-        card.setObjectName("card")
-        row = QHBoxLayout(card)
-        row.setContentsMargins(14, 10, 14, 10)
-        row.setSpacing(14)
-
-        self.state_badge = QLabel("PAUSED")
-        self.state_badge.setObjectName("stateBadge")
-
-        self.toggle_button = QPushButton("Take control  (F9)")
-        self.toggle_button.setObjectName("primary")
-        self.toggle_button.setMinimumWidth(190)
-        self.toggle_button.clicked.connect(self.engine.pause.toggle)
-
-        self.stat_label = QLabel("waiting for the camera…")
-        self.stat_label.setObjectName("stat")
-
-        row.addWidget(self.state_badge)
-        row.addWidget(self.toggle_button)
-        row.addStretch(1)
-        row.addWidget(self.stat_label)
-        return card
 
     def _scrolling(self, widgets: list[QWidget]) -> QScrollArea:
         holder = QWidget()
@@ -192,25 +191,10 @@ class MainWindow(QMainWindow):
 
         self.preview = PreviewWidget()
         self.preview.roiChanged.connect(self._on_roi_dragged)
-
-        self.roi_readout = QLabel()
-        self.roi_readout.setObjectName("roiReadout")
-
-        whole_frame = QPushButton("Reset to whole frame")
-        whole_frame.clicked.connect(self._reset_roi)
+        self._size_preview()
 
         controls = self._scrolling(
             [
-                heading("Region searched"),
-                hint(
-                    "Drag the corner handles on the preview to limit where the marker is "
-                    "looked for. Everything dimmed is ignored, which is how a daylit "
-                    "window stops stealing the track. Drag inside the box to move it, or "
-                    "outside to draw a new one. With the preview focused, the arrow keys "
-                    "move it and Shift+arrows resize it."
-                ),
-                self.roi_readout,
-                whole_frame,
                 heading("Exposure and threshold"),
                 self._tuner(
                     "Exposure",
@@ -246,16 +230,30 @@ class MainWindow(QMainWindow):
                 ),
             ]
         )
-        controls.setMinimumWidth(370)
-        controls.setMaximumWidth(430)
-
         page = QWidget()
         row = QHBoxLayout(page)
         row.setContentsMargins(12, 12, 12, 12)
-        row.setSpacing(14)
-        row.addWidget(self.preview, 1)
-        row.addWidget(controls)
+        row.setSpacing(16)
+
+        left = QVBoxLayout()
+        left.setSpacing(10)
+        left.addWidget(self.preview)
+        left.addStretch(1)
+        row.addLayout(left)
+        row.addWidget(controls, 1)
         return page
+
+    def _size_preview(self) -> None:
+        """Fix the preview to an eighth of the monitor's height.
+
+        Tied to the screen rather than the window so it stays the same physical
+        size on every machine, which matters when the same settings are carried
+        between a four-screen desktop and a three-screen one.
+        """
+        screen = self.screen() or QApplication.primaryScreen()
+        height = screen.availableGeometry().height() // 8 if screen else 180
+        aspect = self.config.width / max(self.config.height, 1)
+        self.preview.setFixedSize(int(height * aspect), height)
 
     def _build_movement_tab(self) -> QWidget:
         self._tuners = getattr(self, "_tuners", [])
@@ -356,8 +354,15 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(14, 10, 14, 10)
         row.setSpacing(10)
 
-        path_label = QLabel(str(self.config_file))
-        path_label.setObjectName("tunerHelp")
+        # The state indicator *is* the toggle. Two controls for one piece of
+        # state left the question of which one to read when they disagreed.
+        self.state_button = QPushButton("PAUSED  (F9)")
+        self.state_button.setObjectName("stateButton")
+        self.state_button.setMinimumWidth(170)
+        self.state_button.clicked.connect(self.engine.pause.toggle)
+
+        reset_roi = QPushButton("Reset ROI")
+        reset_roi.clicked.connect(self._reset_roi)
 
         revert = QPushButton("Revert to saved")
         revert.clicked.connect(self._revert)
@@ -365,7 +370,21 @@ class MainWindow(QMainWindow):
         save.setObjectName("primary")
         save.clicked.connect(self._save)
 
-        row.addWidget(path_label, 1)
+        row.addWidget(self.state_button)
+        row.addSpacing(12)
+        row.addWidget(reset_roi)
+        row.addWidget(
+            HelpButton(
+                "The region searched is the part of the camera image the marker is "
+                "looked for in. Everything outside it is dimmed on the preview and "
+                "ignored by the tracker, which is how a daylit window stops stealing "
+                "the track.\n\nDrag the corner handles to resize it, or drag inside it "
+                "to move it. With the preview focused, the arrow keys move it and "
+                "Shift+arrows resize it.\n\nReset ROI returns it to the whole frame.",
+                "the region searched",
+            )
+        )
+        row.addStretch(1)
         row.addWidget(revert)
         row.addWidget(save)
         return card
@@ -379,7 +398,6 @@ class MainWindow(QMainWindow):
         self.config.set_roi(*self.config.roi())
         for tuner in self._tuners:
             tuner.set_value(float(getattr(self.config, tuner.key)))
-        self._refresh_roi_readout()
         self._refresh_curve()
 
     def _on_change(self, key: str, value: float) -> None:
@@ -391,22 +409,10 @@ class MainWindow(QMainWindow):
 
     def _on_roi_dragged(self, x: int, y: int, w: int, h: int) -> None:
         self.config.set_roi(x, y, w, h)
-        self._refresh_roi_readout()
         self.engine.apply(self.config)
-
-    def _refresh_roi_readout(self) -> None:
-        x, y, w, h = self.config.roi()
-        if self.config.roi_is_whole_frame():
-            self.roi_readout.setText(f"Whole frame — {w} × {h}, nothing excluded")
-        else:
-            covered = 100 * (w * h) / (self.config.width * self.config.height)
-            self.roi_readout.setText(
-                f"{w} × {h} at ({x}, {y})  ·  {covered:.0f}% of the frame searched"
-            )
 
     def _reset_roi(self) -> None:
         self.config.set_roi(0, 0, self.config.width, self.config.height)
-        self._refresh_roi_readout()
         self.engine.apply(self.config)
         self.statusBar().showMessage("Searching the whole frame again", 4000)
 
@@ -449,20 +455,14 @@ class MainWindow(QMainWindow):
         status = self.engine.status()
 
         paused = status.paused
-        self.state_badge.setText("PAUSED" if paused else "ACTIVE")
-        self.state_badge.setStyleSheet(
-            "background: #4a2020; color: #ff9d94;"
-            if paused
-            else "background: #1e4023; color: #86e39a;"
-        )
-        self.toggle_button.setText("Take control  (F9)" if paused else "Park the cursor  (F9)")
-
-        tracked = "tracking" if status.tracking else "NO MARKER"
-        self.stat_label.setText(
-            f"{status.fps:4.1f} fps   |   {tracked}   |   "
-            f"lost {100 * status.lost_fraction:3.0f}%   |   "
-            f"clipped {100 * status.clipped_fraction:3.0f}%"
-        )
+        state = "paused" if paused else "active"
+        if self.state_button.property("state") != state:
+            self.state_button.setText("PAUSED  (F9)" if paused else "ACTIVE  (F9)")
+            self.state_button.setProperty("state", state)
+            # Re-polish, or the stylesheet keeps painting the colour the button
+            # had when it was built.
+            self.state_button.style().unpolish(self.state_button)
+            self.state_button.style().polish(self.state_button)
 
         if status.frames != self._last_frames:
             self._last_frames = status.frames

@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from accesscam.ui.help import HelpButton
+
 
 class Tuner(QWidget):
     """One setting: a label, a live value, step buttons and a slider."""
@@ -63,13 +65,12 @@ class Tuner(QWidget):
 
         name = QLabel(label)
         name.setObjectName("tunerName")
-        code = QLabel(key)
-        code.setObjectName("tunerKey")
 
         heading = QHBoxLayout()
-        heading.setSpacing(8)
+        heading.setSpacing(7)
         heading.addWidget(name)
-        heading.addWidget(code)
+        if help_text:
+            heading.addWidget(HelpButton(help_text, label))
         heading.addStretch(1)
         heading.addWidget(self._value_label)
 
@@ -92,13 +93,8 @@ class Tuner(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(6)
         layout.addLayout(heading)
-        if help_text:
-            hint = QLabel(help_text)
-            hint.setObjectName("tunerHelp")
-            hint.setWordWrap(True)
-            layout.addWidget(hint)
         layout.addLayout(row)
 
         self._slider.valueChanged.connect(self._on_slider)

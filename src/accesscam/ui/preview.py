@@ -26,11 +26,11 @@ HANDLE_FILL = QColor(150, 200, 255)
 HANDLE_EDGE = QColor(20, 24, 30)
 OUTSIDE = QColor(0, 0, 0, 110)
 
-# A drag shorter than this is a click that slipped, not a region. Below it a
-# newly drawn box is discarded: a stray press while the cursor is live would
-# otherwise leave a box too small to hold the marker, and tracking would stop
-# dead with no obvious cause.
-MIN_DRAG_PX = 24
+# The smallest region that can be dragged, in frame pixels. A box smaller than
+# this cannot contain the marker, so collapsing one corner onto another would
+# stop tracking dead with no visible cause. The floor is not a substitute for
+# the reset button - it just stops a slipped grab from being destructive.
+MIN_REGION_PX = 32
 
 # Handles are drawn smaller than they can be grabbed. Making the target larger
 # than the mark is worth a great deal to someone aiming with their head, and
@@ -67,7 +67,6 @@ class PreviewWidget(QWidget):
         self._mode: str | int | None = None
         self._anchor: tuple[int, int] | None = None
         self._grab_offset: tuple[int, int] = (0, 0)
-        self._before_drag: tuple[int, int, int, int] | None = None
         self._hover_corner: int | None = None
 
     def update_frame(
@@ -227,9 +226,20 @@ class PreviewWidget(QWidget):
 
     def _commit(self, x0: int, y0: int, x1: int, y1: int) -> None:
         """Publish a region from two opposite corners, in frame pixels."""
+        width, height = self._frame_size
         left, right = sorted((x0, x1))
         top, bottom = sorted((y0, y1))
-        self._roi = (left, top, max(right - left, 1), max(bottom - top, 1))
+
+        # Hold the floor by pushing the moving edge back out, so a corner
+        # dragged past its opposite stops rather than inverting.
+        if right - left < MIN_REGION_PX:
+            right = min(left + MIN_REGION_PX, width)
+            left = min(left, right - MIN_REGION_PX)
+        if bottom - top < MIN_REGION_PX:
+            bottom = min(top + MIN_REGION_PX, height)
+            top = min(top, bottom - MIN_REGION_PX)
+
+        self._roi = (max(left, 0), max(top, 0), right - left, bottom - top)
         self.update()
         self.roiChanged.emit(*self._roi)
 
@@ -238,7 +248,6 @@ class PreviewWidget(QWidget):
             return
         self.setFocus(Qt.FocusReason.MouseFocusReason)
         point = event.position()
-        self._before_drag = self._roi
         box = self._box_rect()
 
         corner = self._corner_at(point)
@@ -255,9 +264,10 @@ class PreviewWidget(QWidget):
                 frame_point[0] - self._roi[0],
                 frame_point[1] - self._roi[1],
             )
-        else:
-            self._mode = "new"
-            self._anchor = self._to_frame(point)
+        # A press anywhere else does nothing. Drawing a fresh box on any stray
+        # click is too easy to trigger by accident with a head-tracked cursor,
+        # and losing a tuned region that way is a real cost against a
+        # convenience that the handles already cover.
         self.update()
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt's naming
@@ -291,26 +301,10 @@ class PreviewWidget(QWidget):
         if event.button() != Qt.MouseButton.LeftButton or self._mode is None:
             return
 
-        drawn_new = self._mode == "new"
         self._mode = None
         self._anchor = None
-
-        # Only a *newly drawn* box is second-guessed. Resizing an existing one
-        # down to nothing is a deliberate act; a stray press that travels four
-        # pixels is not, and it would leave a region too small to hold the
-        # marker with no visible cause.
-        if drawn_new and self._roi is not None:
-            target = self._fit()
-            width, height = self._frame_size
-            on_screen_w = self._roi[2] / width * target.width()
-            on_screen_h = self._roi[3] / height * target.height()
-            if on_screen_w < MIN_DRAG_PX or on_screen_h < MIN_DRAG_PX:
-                self._roi = self._before_drag
-                self.update()
-                if self._roi is not None:
-                    self.roiChanged.emit(*self._roi)
-
         self._before_drag = None
+        self.update()
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt's naming
         """Arrows move the region; with Shift they resize it from the bottom right."""
