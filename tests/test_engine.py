@@ -155,7 +155,8 @@ def test_apply_sets_exposure_only_when_it_changed():
 
 def test_apply_carries_the_region_of_interest():
     engine = build()
-    assert engine.tracker.roi is None
+    # Always a real box - unset means the whole frame, not disabled.
+    assert engine.tracker.roi == (0, 0, 640, 480)
 
     engine.apply(Config(roi_x=10, roi_y=20, roi_w=100, roi_h=80))
     assert engine.tracker.roi == (10, 20, 100, 80)

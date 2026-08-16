@@ -74,8 +74,13 @@ class Config:
     min_circularity: float = DEFAULT_MIN_CIRCULARITY
     # Region of interest, in frame pixels. Only blobs whose centre falls inside
     # this box are considered, which excludes fixed bright objects at the frame
-    # edges (daylit windows, a lamp) that would otherwise rival the marker. All
-    # zero means the whole frame is searched, i.e. disabled.
+    # edges (daylit windows, a lamp) that would otherwise rival the marker.
+    #
+    # There is no disabled state: the region is always in force, and a zero
+    # width or height means "the whole frame" rather than "off". One always-live
+    # box that is sometimes the size of the frame is easier to reason about than
+    # a feature that silently is or is not applied - and it means the preview
+    # always has a box to show and drag, instead of one appearing from nowhere.
     roi_x: int = 0
     roi_y: int = 0
     roi_w: int = 0
@@ -111,11 +116,27 @@ class Config:
     # Control
     hotkey: str = DEFAULT_HOTKEY
 
-    def roi(self) -> tuple[int, int, int, int] | None:
-        """The (x, y, w, h) region of interest, or None if it is disabled."""
+    def roi(self) -> tuple[int, int, int, int]:
+        """The (x, y, w, h) region searched, always a real box.
+
+        A zero width or height resolves to the whole frame rather than to a
+        degenerate box that would reject every blob.
+        """
         if self.roi_w > 0 and self.roi_h > 0:
             return (self.roi_x, self.roi_y, self.roi_w, self.roi_h)
-        return None
+        return (0, 0, self.width, self.height)
+
+    def roi_is_whole_frame(self) -> bool:
+        """Whether the region covers everything, i.e. excludes nothing."""
+        return self.roi() == (0, 0, self.width, self.height)
+
+    def set_roi(self, x: int, y: int, w: int, h: int) -> None:
+        """Adopt a region, clamped to the frame so it can never sit outside it."""
+        x = max(0, min(int(x), self.width - 1))
+        y = max(0, min(int(y), self.height - 1))
+        self.roi_x, self.roi_y = x, y
+        self.roi_w = max(1, min(int(w), self.width - x))
+        self.roi_h = max(1, min(int(h), self.height - y))
 
     @classmethod
     def load(cls, path: Path | None = None) -> Config:

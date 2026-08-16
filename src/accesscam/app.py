@@ -125,8 +125,8 @@ def run(config: Config, dry_run: bool = False) -> int:
     if fmt["codec"] != "MJPG":
         print("  warning: not in MJPEG mode - expect a reduced frame rate")
 
-    roi = config.roi()
-    if roi is not None:
+    if not config.roi_is_whole_frame():
+        roi = config.roi()
         print(
             f"  region of interest: {roi[2]}x{roi[3]} at ({roi[0]}, {roi[1]}) "
             "- marker sought only inside it"

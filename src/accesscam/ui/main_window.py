@@ -89,6 +89,13 @@ def heading(text: str) -> QLabel:
     return label
 
 
+def hint(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setObjectName("tunerHelp")
+    label.setWordWrap(True)
+    return label
+
+
 class MainWindow(QMainWindow):
     def __init__(
         self,
@@ -180,9 +187,24 @@ class MainWindow(QMainWindow):
         self._tuners: list[Tuner] = getattr(self, "_tuners", [])
 
         self.preview = PreviewWidget()
+        self.preview.roiChanged.connect(self._on_roi_dragged)
+
+        whole_frame = QPushButton("Reset to whole frame")
+        whole_frame.clicked.connect(self._reset_roi)
 
         controls = self._scrolling(
             [
+                heading("Region searched"),
+                hint(
+                    "Drag a box on the preview to limit where the marker is looked for. "
+                    "Everything dimmed is ignored, which is how a daylit window stops "
+                    "stealing the track."
+                ),
+                self._tuner("Left", "roi_x", 0, 639, 5, 0, suffix=" px"),
+                self._tuner("Top", "roi_y", 0, 479, 5, 0, suffix=" px"),
+                self._tuner("Width", "roi_w", 0, 640, 5, 0, suffix=" px"),
+                self._tuner("Height", "roi_h", 0, 480, 5, 0, suffix=" px"),
+                whole_frame,
                 heading("Exposure and threshold"),
                 self._tuner(
                     "Exposure",
@@ -345,6 +367,10 @@ class MainWindow(QMainWindow):
     # -- wiring ------------------------------------------------------------
 
     def _load_into_controls(self) -> None:
+        # Materialise the region before showing it. A stored zero means "the
+        # whole frame", and a Width box reading 0 next to a full-frame outline
+        # would be a straightforward lie about what the tracker is doing.
+        self.config.set_roi(*self.config.roi())
         for tuner in self._tuners:
             tuner.set_value(float(getattr(self.config, tuner.key)))
         self._refresh_curve()
@@ -352,9 +378,34 @@ class MainWindow(QMainWindow):
     def _on_change(self, key: str, value: float) -> None:
         current = getattr(self.config, key)
         setattr(self.config, key, int(round(value)) if isinstance(current, int) else value)
+        if key.startswith("roi_"):
+            # Re-clamp: the four values move independently, so a wide box pushed
+            # right can otherwise run off the frame and quietly exclude the marker.
+            self.config.set_roi(
+                self.config.roi_x, self.config.roi_y, self.config.roi_w, self.config.roi_h
+            )
         self.engine.apply(self.config)
         if key in {"h_gain", "accel_floor", "accel_knee", "accel_sharpness"}:
             self._refresh_curve()
+
+    def _on_roi_dragged(self, x: int, y: int, w: int, h: int) -> None:
+        self.config.set_roi(x, y, w, h)
+
+        shown = {}
+        for tuner in self._tuners:
+            if tuner.key.startswith("roi_"):
+                tuner.set_value(float(getattr(self.config, tuner.key)))
+                shown[tuner.key] = int(round(tuner.value()))
+        # Read the values straight back off the controls. They quantise to their
+        # own step, so taking the drag as authoritative would leave the numbers
+        # on screen disagreeing with the box being used by a few pixels.
+        self.config.set_roi(shown["roi_x"], shown["roi_y"], shown["roi_w"], shown["roi_h"])
+
+        self.engine.apply(self.config)
+
+    def _reset_roi(self) -> None:
+        self._on_roi_dragged(0, 0, self.config.width, self.config.height)
+        self.statusBar().showMessage("Searching the whole frame again", 4000)
 
     def _refresh_curve(self) -> None:
         self.curve.set_curve(
