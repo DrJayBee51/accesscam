@@ -43,6 +43,19 @@ class FakeCamera:
         pass
 
 
+@pytest.fixture
+def fake_camera():
+    """The stand-in camera class, for tests that build their own.
+
+    A fixture rather than an import. `conftest.py` is *loaded* by pytest, not
+    imported by name, so `from tests.conftest import FakeCamera` only works
+    when the repository root happens to be on `sys.path` - which it is under
+    `python -m pytest`, and is not under a bare `pytest`. Every local run
+    passed and CI failed for two days on exactly that difference.
+    """
+    return FakeCamera
+
+
 @pytest.fixture(scope="session")
 def qt_app():
     """One QApplication for the whole run - Qt permits no more than one."""

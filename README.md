@@ -55,7 +55,14 @@ user-tunable gains, filtered for noise, and applied to the system cursor.
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
+pytest
+ruff check . ; ruff format --check .
 ```
+
+Run `pytest`, not `python -m pytest`. The `-m` form puts the working directory
+on `sys.path`, so an import that only resolves from the repository root passes
+locally and fails in CI, which runs it bare. That difference cost two days of
+red builds on green local runs.
 
 ### Camera bring-up
 

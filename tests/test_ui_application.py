@@ -58,10 +58,8 @@ def test_scanning_says_so_when_nothing_answers(window, monkeypatch):
     assert "No cameras answered" in window.camera_note.text()
 
 
-def test_choosing_a_camera_swaps_it(window, monkeypatch):
-    from tests.conftest import FakeCamera
-
-    replacement = FakeCamera()
+def test_choosing_a_camera_swaps_it(window, monkeypatch, fake_camera):
+    replacement = fake_camera()
     monkeypatch.setattr(window, "_open_camera", lambda device: replacement)
     window.camera_choice.addItem("Camera 3", 3)
     window.camera_choice.setCurrentIndex(window.camera_choice.findData(3))
@@ -93,26 +91,22 @@ def test_a_camera_that_will_not_open_puts_the_old_one_back(window, monkeypatch):
     assert window.camera_choice.currentData() == before
 
 
-def test_the_engine_refuses_a_camera_swap_while_running(window):
-    from tests.conftest import FakeCamera
-
+def test_the_engine_refuses_a_camera_swap_while_running(window, fake_camera):
     window.engine.start()
     try:
         with pytest.raises(RuntimeError):
-            window.engine.use_camera(FakeCamera())
+            window.engine.use_camera(fake_camera())
     finally:
         window.engine.stop()
 
 
-def test_swapping_clears_the_stale_marker_position(window):
+def test_swapping_clears_the_stale_marker_position(window, fake_camera):
     # The previous position describes a frame that no longer exists; carried
     # over it would deliver one enormous displacement on the first frame.
-    from tests.conftest import FakeCamera
-
-    window.engine.step(FakeCamera().read())
+    window.engine.step(fake_camera().read())
     assert window.engine.status().position is not None
 
-    window.engine.use_camera(FakeCamera())
+    window.engine.use_camera(fake_camera())
 
     assert window.engine.status().position is None
     assert window.engine.latest_frame() is None
