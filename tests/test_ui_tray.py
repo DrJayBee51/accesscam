@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtGui import QColor
 
-from accesscam.ui.tray import ACTIVE, PAUSED, Tray, marker_icon
+from accesscam.ui.tray import ACTIVE, TROUBLE, Tray, marker_icon
 
 pytestmark = pytest.mark.usefixtures("qt_app")
 
@@ -47,17 +47,38 @@ def test_the_glyph_draws_at_any_size():
         assert QColor(centre) == ACTIVE
 
 
-def test_the_icon_colour_follows_the_pause_state(window):
+def test_the_states_differ_in_shape_and_not_only_in_colour(window):
+    # Green-driving against red-parked is the least legible pair for the
+    # commonest colour blindness, in a tool whose whole purpose is access. The
+    # marker is therefore present, absent, or struck through.
+    tray, _ = build_tray(window)
+    centre = (32, 32)
+
+    tray.set_state("active")
+    driving = tray.icon().pixmap(64, 64).toImage()
+    tray.set_state("parked")
+    parked = tray.icon().pixmap(64, 64).toImage()
+    tray.set_state("trouble", "the camera stopped")
+    trouble = tray.icon().pixmap(64, 64).toImage()
+
+    # pixelColor, not pixel: QColor(QRgb) throws the alpha away, and the alpha
+    # is the whole point of the parked state.
+    assert driving.pixelColor(*centre) == ACTIVE
+    # Parked has no marker at all, so the middle is empty rather than recoloured.
+    assert parked.pixelColor(*centre).alpha() == 0
+    assert trouble.pixelColor(*centre) == TROUBLE
+    assert parked != trouble != driving
+
+
+def test_trouble_says_what_is_wrong_where_it_can_be_read(window):
+    # The tooltip is the one place an explanation survives a broken pointer -
+    # though reading it still needs a hover, which is why the icon itself has
+    # to carry the fact that something is wrong.
     tray, _ = build_tray(window)
 
-    tray.set_paused(True)
-    parked = tray.icon().pixmap(64, 64).toImage()
-    tray.set_paused(False)
-    driving = tray.icon().pixmap(64, 64).toImage()
+    tray.set_state("trouble", "No frames from the camera.")
 
-    centre = (32, 32)
-    assert QColor(parked.pixel(*centre)) == PAUSED
-    assert QColor(driving.pixel(*centre)) == ACTIVE
+    assert "No frames from the camera." in tray.toolTip()
 
 
 def test_the_tooltip_says_which_state_it_is_in(window):

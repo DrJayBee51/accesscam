@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
 from accesscam import __version__, single_instance, startup
 from accesscam.config import Config, config_path
 from accesscam.engine import Engine
+from accesscam.health import Health
 from accesscam.log import log
 from accesscam.ui.controls import Tuner
 from accesscam.ui.curve import CurveWidget
@@ -237,6 +238,9 @@ class MainWindow(QMainWindow):
         self.hides_to_tray = False
         self.quit_requested = False
         self.tray = None
+        # Judged rather than measured: the engine says what happened, this
+        # decides when a run of readings is worth showing someone.
+        self.health = Health()
 
         self.setWindowTitle(f"AccessCam {__version__}")
         self.setWindowIcon(app_icon())
@@ -981,8 +985,12 @@ class MainWindow(QMainWindow):
         status = self.engine.status()
 
         paused = status.paused
+        trouble = self.health.update(status)
         if self.tray is not None:
-            self.tray.set_paused(paused)
+            if trouble is not None:
+                self.tray.set_state("trouble", trouble.detail)
+            else:
+                self.tray.set_state("parked" if paused else "active")
 
         state = "paused" if paused else "active"
         if self.state_button.property("state") != state:
@@ -1184,6 +1192,9 @@ def launch(
     except Exception as exc:  # noqa: BLE001 - visible, but not fatal with a window
         log.warning("hotkey %r unavailable: %s", config.hotkey, exc)
         window.statusBar().showMessage(f"Hotkey {config.hotkey!r} unavailable: {exc}")
+        window.health.note_hotkey_failure(
+            f"{config.hotkey.upper()} could not be registered - another program may hold it."
+        )
 
     engine.start()
     log.info("running")

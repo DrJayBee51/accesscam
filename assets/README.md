@@ -10,6 +10,35 @@ artwork is a safe state to leave the repository in.
 | `accesscam.ico` | Desktop, Start menu, taskbar, Alt-Tab, the window's title bar, the installer | Multi-size `.ico` |
 | `tray-active.png` | Notification area, **while the cursor is being driven** | Square PNG, transparent |
 | `tray-paused.png` | Notification area, **while the cursor is parked** | Square PNG, transparent |
+| `tray-trouble.png` | Notification area, **while something is wrong** | Square PNG, transparent |
+
+## The three states
+
+The design these were specified against: a head-and-shoulders silhouette, with
+the marker on the face.
+
+| State | What it means | The idea |
+|---|---|---|
+| Active | AccessCam has the pointer and can see you | Silhouette **with** the marker |
+| Parked | Running, but not driving the cursor — F9 to take it | Silhouette **without** the marker |
+| Trouble | Running, but something is stopping it working | Silhouette with a **red X** |
+
+The three differ in *what is drawn*, not only in colour, which is the point —
+see below.
+
+**What counts as trouble**, decided in `src/accesscam/health.py`:
+
+- **No frames from the camera** for 3 seconds. Unplugged, driver fallen over,
+  or another application has taken it.
+- **The marker unseen for 6 seconds while driving.** Long enough to cover
+  glancing at the keyboard and back, which is not a fault.
+- **The pause hotkey would not register**, which is permanent for the session
+  and means the cursor cannot be parked from the keyboard.
+
+Slow to complain and quick to forgive: a condition has to persist before it is
+shown, and clears the instant it goes away. An indicator that cries wolf gets
+ignored on the one occasion it is right. The tooltip carries which of the three
+it is and what to do about it.
 
 ## What the tray icon has to do
 
@@ -31,11 +60,11 @@ Three constraints worth designing against rather than discovering:
    drawn glyph fails this: its near-white ring nearly vanishes on a light
    taskbar. A shape that reads on both — or a dark outline around a light
    shape — survives either.
-3. **Do not carry the state on colour alone.** Green-driving and red-parked is
-   the least legible pair for the commonest form of colour blindness, and this
-   is an accessibility tool. Change the *shape* too: filled against hollow, or
-   present against struck through. Colour can carry it as well; it should not
-   carry it by itself.
+3. **Do not carry the state on colour alone.** Green against red is the least
+   legible pair for the commonest form of colour blindness, and this is an
+   accessibility tool. The marker present / absent / struck through does the
+   work by itself, and colour reinforces it — which is why the specified design
+   works: printed in greyscale, the three are still three.
 
 ## Sizes
 
