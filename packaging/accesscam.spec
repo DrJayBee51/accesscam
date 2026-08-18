@@ -22,6 +22,63 @@ from accesscam import __version__  # noqa: E402
 
 ROOT = Path(SPECPATH).parent
 
+
+def _windows_version_tuple(version: str) -> tuple[int, int, int, int]:
+    """Pad a PEP 440-ish version out to the four integers Windows wants.
+
+    A Windows FILEVERSION resource is always four numbers; "0.1.0" has three,
+    so the release build number is padded with a trailing zero.
+    """
+    parts = [int(p) for p in version.split(".")[:4]]
+    return tuple((parts + [0, 0, 0, 0])[:4])
+
+
+def _version_resource():
+    """The Windows version resource, so the exe answers to more than a filename.
+
+    Without this, Explorer's Properties > Details tab is blank and the
+    installer has nothing reliable to read the version from except re-running
+    Python. PyInstaller's `version=` wants this structure specifically - a
+    plain dict is accepted silently and produces an exe with no version
+    resource at all, which is what the first build actually shipped.
+    """
+    from PyInstaller.utils.win32.versioninfo import (
+        FixedFileInfo,
+        StringFileInfo,
+        StringStruct,
+        StringTable,
+        VarFileInfo,
+        VarStruct,
+        VSVersionInfo,
+    )
+
+    numbers = _windows_version_tuple(__version__)
+    return VSVersionInfo(
+        ffi=FixedFileInfo(filevers=numbers, prodvers=numbers),
+        kids=[
+            StringFileInfo(
+                [
+                    StringTable(
+                        "040904B0",
+                        [
+                            StringStruct("CompanyName", "AccessCam"),
+                            StringStruct("FileDescription", "AccessCam"),
+                            StringStruct("FileVersion", __version__),
+                            StringStruct("InternalName", "AccessCam"),
+                            StringStruct("OriginalFilename", "AccessCam.exe"),
+                            StringStruct("ProductName", "AccessCam"),
+                            StringStruct("ProductVersion", __version__),
+                            StringStruct(
+                                "LegalCopyright", "MIT licensed - see LICENSE"
+                            ),
+                        ],
+                    )
+                ]
+            ),
+            VarFileInfo([VarStruct("Translation", [1033, 1200])]),
+        ],
+    )
+
 a = Analysis(
     [str(ROOT / "src" / "accesscam" / "__main__.py")],
     pathex=[str(ROOT / "src")],
@@ -67,7 +124,7 @@ exe = EXE(
     # launch, for a program that has a GUI and prints to a log file instead.
     console=False,
     icon=str(ROOT / "assets" / "accesscam.ico"),
-    version_info={"version": __version__},
+    version=_version_resource(),
 )
 
 coll = COLLECT(

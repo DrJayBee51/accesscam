@@ -324,12 +324,29 @@ or hands focus to the first, and the latter is what a user double-clicking a
 shortcut twice actually means.
 *Done: launching twice surfaces the running instance and never accuses the camera.*
 
-**M4.3 — The build.** 🚧 *One-folder build works as of 2026-08-18; installer and release job outstanding.* No spec file, no build script, no release job. The icon
-now exists (`assets/accesscam.ico`). PyInstaller 6.22.1 supports the 3.14 venv,
-so the risk table's "pin to 3.12" contingency looks unnecessary, and
-`startup.executable()` already handles being frozen, so the logon task needs no
-change. The unknown is Qt and OpenCV plugin bundling, which is never right
-first try.
+**M4.3 — The build.** ✅ *Done 2026-08-18.* `packaging/accesscam.spec`
+produces a one-folder PyInstaller build (262MB unpacked) with a real Windows
+version resource - the first attempt used `version_info={"version": ...}`,
+which `EXE()` accepts silently and does nothing with, so the shipped exe had a
+blank Properties > Details tab until this was caught and replaced with the
+`VSVersionInfo` structure PyInstaller actually reads.
+
+One folder rather than one file, deliberately: `--onefile` unpacks itself to a
+temp directory on every launch, which costs seconds at exactly the moment
+AccessCam is already racing the camera and the shell at logon, and leaves
+antivirus software watching an executable materialise from nowhere at every
+boot.
+
+**The first build found a real bug**: `--ui` was never the default, so a
+double-clicked `AccessCam.exe` opened *nothing* - no window, no tray - while
+quietly taking over the pointer. `wants_ui()` in `app.py` now opens the window
+whenever `sys.frozen` is set, unless `--headless` says otherwise; a source
+checkout keeps the old default, since `python -m accesscam` is how the
+pipeline gets exercised without a UI in the way. Verified from the built exe,
+not from source: camera opened, window built, tray icon shown, hotkey
+registered.
+
+No release job in CI yet - left for whenever tagged releases start.
 *Done: a one-folder build launches on a Windows machine that has never had
 Python, opens the camera, and registers the logon task from the checkbox.*
 
@@ -346,12 +363,39 @@ own machine — a real case in the schools and centres this is aimed at. It runs
 as whoever launched it, says so in the window when that is not enough (M4.1),
 and offers the scheduled task as the way up.
 
-**M4.5 — Uninstall has to remove the logon task.** The task survives deleting
-the application, and then fails at every logon forever, pointing at a path that
-no longer exists. `startup.disable()` already does the work; nothing calls it
-at uninstall time because there is no uninstall time yet. Config and log in
-`%APPDATA%\AccessCam` should be left alone — settings someone tuned over days
-are not the installer's to throw away.
+**M4.5 — Uninstall has to remove the logon task.** ✅ *Done 2026-08-18, built
+into the same installer as M4.3/M4.4.* `packaging/AccessCam.iss` writes
+`[Code]` rather than calling `startup.disable()` - the uninstaller is a
+separate generated exe (`unins000.exe`) with no Python inside it, so the logic
+is reimplemented directly in Pascal Script: try `schtasks /delete` unelevated
+first, and only if the task survives that, prompt for elevation with
+`ShellExec('runas', ...)` - the same on-demand-elevation pattern
+`relaunch_elevated()` already uses, rather than requiring the whole
+uninstaller to run as administrator. If both attempts fail, it says so and
+gives the manual command rather than leaving a silent mess; a `MsgBox` at that
+point is guarded by `UninstallSilent()`, since an unattended uninstall (an IT
+deployment script, say) must never block on a dialog nobody is watching to
+click.
+
+Config and log in `%APPDATA%\AccessCam` are deliberately left alone -
+`[UninstallDelete]` only targets the install directory. Settings tuned over
+days of real use are not the installer's to discard.
+
+**Verified end to end, with one deliberate exception.** Silent install and
+uninstall were run against an isolated build with the task name swapped to a
+throwaway value, confirming: the "no task registered" path exits cleanly with
+no dialog (the common case - most users never enable logon start), the custom
+Pascal code actually runs (confirmed via `Log()` lines in the Inno-generated
+log, which does not capture custom `[Code]` by default), and no file outside
+the install directory is touched. **Not verified**: actually deleting a
+registered `/rl highest` task, because creating one to delete requires an
+elevated shell, and this session had none to spare - test-registering even a
+*non-elevated* task failed with Access Denied here, tighter than the
+create-only restriction `startup.py` already documented. Deleting the one real
+task on this machine to test against was ruled out: it is John's live logon
+task, and there was no way to re-register it elevated afterward if the test
+went wrong. Worth a five-minute real check next time the installer runs on a
+machine with the task already set.
 *Done: removing AccessCam leaves no scheduled task and no broken shortcuts.*
 
 **M4.6 — Third-party licences.** MIT covers our code and nothing else. A
