@@ -324,7 +324,7 @@ or hands focus to the first, and the latter is what a user double-clicking a
 shortcut twice actually means.
 *Done: launching twice surfaces the running instance and never accuses the camera.*
 
-**M4.3 — The build.** No spec file, no build script, no release job. The icon
+**M4.3 — The build.** 🚧 *One-folder build works as of 2026-08-18; installer and release job outstanding.* No spec file, no build script, no release job. The icon
 now exists (`assets/accesscam.ico`). PyInstaller 6.22.1 supports the 3.14 venv,
 so the risk table's "pin to 3.12" contingency looks unnecessary, and
 `startup.executable()` already handles being frozen, so the logon task needs no
@@ -333,11 +333,18 @@ first try.
 *Done: a one-folder build launches on a Windows machine that has never had
 Python, opens the camera, and registers the logon task from the checkbox.*
 
-**M4.4 — Decide the distribution shape.** A zip the user unpacks, or an
-installer (Inno Setup). This is a prerequisite for M4.5 rather than a
-preference: it decides where the app lives, who makes the Start-menu shortcut,
-and whether there is an uninstaller at all.
-*Done: decided and written down here, with the reason.*
+**M4.4 — Decide the distribution shape.** ✅ *Decided 2026-08-18: an **Inno
+Setup installer**.* It is the only shape that can satisfy M4.5, since a zip
+leaves nothing behind to remove the logon task, and the people this is for are
+often installing with someone's help — where "unpack it and find the exe" is
+the step that goes wrong. Free, scriptable, and runnable in CI.
+
+**The installed application does not require administrator rights**, and that
+is deliberate rather than an oversight. AccessCam wants them, but demanding
+them in the manifest would lock out anyone who is not an administrator of their
+own machine — a real case in the schools and centres this is aimed at. It runs
+as whoever launched it, says so in the window when that is not enough (M4.1),
+and offers the scheduled task as the way up.
 
 **M4.5 — Uninstall has to remove the logon task.** The task survives deleting
 the application, and then fails at every logon forever, pointing at a path that

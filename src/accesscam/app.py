@@ -36,6 +36,29 @@ BACKENDS = {
 STATUS_INTERVAL = 2.0
 
 
+def frozen() -> bool:
+    """Whether this is the packaged application rather than a source checkout.
+
+    PyInstaller sets `sys.frozen`. It changes one thing that matters here: who
+    is running it, and therefore what they expect to happen when they do.
+    """
+    return bool(getattr(sys, "frozen", False))
+
+
+def wants_ui(args) -> bool:
+    """Whether to open the settings window.
+
+    A packaged AccessCam opens it unless told not to: someone who double-clicks
+    an application expects to see it, and an invisible process that has taken
+    over the pointer is alarming rather than tidy. A source checkout keeps the
+    opposite default, because `python -m accesscam` is how the pipeline gets
+    exercised with no UI in the way.
+    """
+    if args.headless:
+        return False
+    return bool(args.ui) or frozen()
+
+
 def build_camera(config: Config, wait: float = 0.0) -> CameraSource:
     camera = CameraSource(
         CameraSettings(
@@ -226,6 +249,11 @@ def main() -> int:
         help="open the settings window instead of running headless",
     )
     parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="run with no window, controlled only by the pause hotkey",
+    )
+    parser.add_argument(
         "--wait-for-camera",
         type=float,
         default=0.0,
@@ -276,7 +304,7 @@ def main() -> int:
     if log_file is not None:
         print(f"log:    {log_file}")
 
-    if args.ui:
+    if wants_ui(args):
         # Imported here, not at module scope: the headless path is the one
         # someone depends on to use their computer, and it must not fail to
         # start because a UI toolkit is missing or broken.

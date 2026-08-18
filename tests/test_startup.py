@@ -115,3 +115,21 @@ def test_unsupported_platforms_report_rather_than_pretend(monkeypatch):
 
 def test_the_executable_path_is_absolute():
     assert Path(startup.executable().split('"')[1]).is_absolute()
+
+
+# -- the packaged application ---------------------------------------------
+
+
+def test_a_relaunch_carries_the_current_flags_and_waits_for_the_camera(tmp_path, monkeypatch):
+    # The copy being replaced is still holding the camera for the second it
+    # takes to quit, so the new one has to be willing to wait for it.
+    console = tmp_path / "python.exe"
+    console.write_text("")
+    (tmp_path / "pythonw.exe").write_text("")
+    monkeypatch.setattr(startup.sys, "executable", str(console))
+    monkeypatch.setattr(startup.sys, "argv", ["accesscam", "--ui", "--device", "3"])
+
+    _exe, arguments = startup._current_invocation()
+
+    assert "--device 3" in arguments
+    assert f"--wait-for-camera {startup.RELAUNCH_WAIT_SECONDS}" in arguments

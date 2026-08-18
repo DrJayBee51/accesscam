@@ -34,3 +34,7 @@ Thumbs.db
 ~$*
 *.swx
 *.bak
+
+# PyInstaller build output
+build/
+dist/
