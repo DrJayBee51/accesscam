@@ -24,10 +24,10 @@ def test_the_banner_shows_when_not_elevated(window):
 
 
 def test_the_banner_is_absent_when_elevated(qt_app, monkeypatch, window):
-    monkeypatch.setattr(main_window_module, "_is_elevated", lambda: True)
+    monkeypatch.setattr(main_window_module, "_can_reach_privileged_windows", lambda: True)
     elevated = main_window_module.MainWindow(window.engine, window.config)
     try:
-        assert not elevated.elevation_banner.isVisible()
+        assert elevated.elevation_banner.isHidden()
         # And it costs nothing: the window is shorter without the strip.
         assert elevated.height() < window.height()
     finally:
@@ -67,3 +67,52 @@ def test_a_refused_restart_says_so_and_stays(window, monkeypatch):
 
     assert not window.quit_requested
     assert warned == ["The elevation prompt was declined"]
+
+
+# -- UIAccess: the other way to reach a privileged window ------------------
+
+
+def test_uiaccess_alone_is_enough_to_silence_the_banner(qt_app, monkeypatch, window):
+    """A signed, properly installed AccessCam holding UIAccess is *not* running
+    as administrator and does not need to be.
+
+    This is how the SmartNav does it - `asInvoker` plus `uiAccess="true"` in its
+    manifest - and telling that user to restart as administrator would be
+    advice to fix something that is not broken.
+    """
+    from accesscam.mouse import windows as windows_backend
+
+    monkeypatch.setattr(windows_backend, "is_elevated", lambda: False)
+    monkeypatch.setattr(windows_backend, "has_uiaccess", lambda: True)
+    monkeypatch.setattr(
+        main_window_module,
+        "_can_reach_privileged_windows",
+        lambda: windows_backend.can_reach_privileged_windows(),
+    )
+
+    quiet = main_window_module.MainWindow(window.engine, window.config)
+    try:
+        # isHidden(), not isVisible(): a child of a window that was never
+        # shown reports isVisible() False regardless, which would pass this
+        # test for the wrong reason.
+        assert quiet.elevation_banner.isHidden()
+    finally:
+        quiet.close()
+
+
+def test_neither_route_available_still_warns(qt_app, monkeypatch, window):
+    from accesscam.mouse import windows as windows_backend
+
+    monkeypatch.setattr(windows_backend, "is_elevated", lambda: False)
+    monkeypatch.setattr(windows_backend, "has_uiaccess", lambda: False)
+    monkeypatch.setattr(
+        main_window_module,
+        "_can_reach_privileged_windows",
+        lambda: windows_backend.can_reach_privileged_windows(),
+    )
+
+    warned = main_window_module.MainWindow(window.engine, window.config)
+    try:
+        assert not warned.elevation_banner.isHidden()
+    finally:
+        warned.close()

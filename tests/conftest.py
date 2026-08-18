@@ -109,7 +109,7 @@ def window(qt_app, monkeypatch):
     # would depend on whether the suite happens to be run from an elevated
     # terminal, and the banner is the taller of the two cases - so testing it
     # is testing the one that can overflow a small screen.
-    monkeypatch.setattr(main_window_module, "_is_elevated", lambda: False)
+    monkeypatch.setattr(main_window_module, "_can_reach_privileged_windows", lambda: False)
 
     config = Config()
     engine = Engine(

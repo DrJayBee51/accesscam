@@ -41,6 +41,36 @@ why that's hand-written Pascal Script rather than a call into `startup.py`
 (the uninstaller has no Python inside it). Config and log in
 `%APPDATA%\AccessCam` are never touched by install or uninstall.
 
+## UIAccess (not enabled yet — needs a certificate)
+
+AccessCam needs to deliver input to higher-integrity windows (on-screen
+keyboards, anything elevated), and today does it by running as administrator.
+The better mechanism is **UIAccess**, Windows' accessibility exemption from
+UIPI — the same one the SmartNav uses, via an external `smartnav.exe.manifest`
+carrying `level="asInvoker" uiAccess="true"`. A process holding UIAccess needs
+no admin rights and raises no UAC prompt.
+
+The spec supports it already, opt-in:
+
+```powershell
+$env:ACCESSCAM_UIACCESS = "1"
+pyinstaller packaging\accesscam.spec --noconfirm
+```
+
+**Do not set this until the exe is both signed and installed under Program
+Files.** Windows grants UIAccess only to an Authenticode-signed binary in a
+location standard users cannot write to. Fail either test and the process does
+not start in a degraded mode — it does not start at all:
+
+```
+Start-Process : This command cannot be run due to the error:
+A referral was returned from the server.
+```
+
+That is what an unsigned UIAccess build looks like, and it is why the flag is
+off by default rather than always on. See `docs/PROJECT_PLAN.md` M4.8 for the
+certificate and install-location decisions this waits on.
+
 ## Testing a change to the installer without touching the real logon task
 
 `AccessCam.iss` matches the scheduled task by name (`AccessCam`), the same

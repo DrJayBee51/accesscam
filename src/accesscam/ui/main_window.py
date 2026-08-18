@@ -179,8 +179,15 @@ def heading(text: str) -> QLabel:
     return label
 
 
-def _is_elevated() -> bool:
-    """Whether this process can deliver input to privileged windows.
+def _can_reach_privileged_windows() -> bool:
+    """Whether hovering will actually register on a higher-integrity window.
+
+    Two different routes get there and the difference does not matter to the
+    person using it: administrator rights, or UIAccess - the exemption Windows
+    grants to signed accessibility software installed in a protected location,
+    which is how the SmartNav manages it without ever asking for admin. Asking
+    the combined question is what stops the banner telling a properly signed
+    and installed AccessCam to elevate when it has no need to.
 
     True everywhere but Windows: UIPI is a Windows mechanism, and a warning
     about it elsewhere would be noise about a problem that cannot occur.
@@ -188,9 +195,9 @@ def _is_elevated() -> bool:
     if sys.platform != "win32":
         return True
 
-    from accesscam.mouse.windows import is_elevated
+    from accesscam.mouse.windows import can_reach_privileged_windows
 
-    return is_elevated()
+    return can_reach_privileged_windows()
 
 
 def hint(text: str) -> QLabel:
@@ -326,7 +333,7 @@ class MainWindow(QMainWindow):
         # the strip in it. The window is fixed-size: revealing the banner after
         # locking takes its height out of the tabs instead, and the two tabs do
         # not give it up equally, which breaks the matched card heights.
-        banner.setVisible(not _is_elevated())
+        banner.setVisible(not _can_reach_privileged_windows())
         return banner
 
     def _restart_elevated(self) -> None:

@@ -92,6 +92,7 @@ other two from scratch to match.
 ## The fallback
 
 `tools/make_icon.py` regenerates `accesscam.ico` from the glyph drawn in
-`src/accesscam/ui/tray.py`. **Do not run it once real artwork is in place** — it
-overwrites the file. It exists so a checkout without artwork still has an icon
+`src/accesscam/ui/tray.py`. Now that real artwork is in place it **refuses to
+overwrite an existing file** and needs `--force` to do so — the GIMP source it
+would discard is not something the script can rebuild from. It exists so a checkout without artwork still has an icon
 of its own rather than a generic interpreter icon.

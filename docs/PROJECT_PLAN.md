@@ -443,12 +443,77 @@ and is surfaced nowhere: no `--version`, no About. It is also duplicated in
 no version is nearly useless.
 *Done: one source of truth, reachable from both the command line and the window.*
 
-**M4.8 — SmartScreen.** The binary will be unsigned, so the first launch shows
-"Windows protected your PC". A certificate is the real fix and costs money
-annually; the honest alternative is to say plainly in the install guide what
-the warning is and why it appears. Either is defensible; silence is not, because
-it looks exactly like malware behaving normally.
-*Done: either signed, or documented at the point the user meets it.*
+**M4.8 — Code signing: SmartScreen, and the elevation problem it also solves.**
+Reframed 2026-08-18 after looking at how the SmartNav actually does this, which
+turned out to answer a question M4.1 and M4.4 had settled the hard way.
+
+**The finding.** The SmartNav does not run as administrator. Its
+`smartnav.exe.manifest` — an *external* manifest beside the exe, which is why a
+search for an embedded one comes up empty — asks for:
+
+```xml
+<requestedExecutionLevel level="asInvoker" uiAccess="true"/>
+```
+
+`uiAccess="true"` is Windows' official accessibility exemption from UIPI. A
+process holding it runs at ordinary privilege — no admin, no UAC prompt, works
+for a user who is not an administrator of their own machine — and is still
+allowed to deliver input to higher-integrity windows. It is precisely the
+mechanism this application should be using, and what assistive technology is
+*meant* to use.
+
+Windows grants it only when all three hold, and the SmartNav satisfies all
+three (verified on this machine 2026-08-18):
+
+| Requirement | SmartNav |
+|---|---|
+| `uiAccess="true"` in the manifest | yes |
+| Authenticode-signed by a trusted publisher | yes — GlobalSign, "NaturalPoint, Inc" |
+| Installed under Program Files or System32 | yes — `C:\Program Files (x86)\NaturalPoint\` |
+
+The signature and the protected location are the security argument: a standard
+user cannot write to Program Files, so nobody can claim the exemption for a
+binary they dropped on the desktop, and the certificate says who built it.
+
+**Why this makes one certificate buy two things.** Signing was already on this
+list to stop SmartScreen's "Windows protected your PC" on first launch. The
+same certificate also unlocks UIAccess, which removes the elevation problem
+outright: no administrator rights, no UAC prompt (unanswerable by a head-tracked
+cursor, per M4.1), and no scheduled task needed *for elevation* — the task stays
+useful only for starting at logon. It also dissolves the tension M4.4 recorded:
+AccessCam would work for a non-admin user at a school or rehab centre without
+anyone elevating anything, which `requireAdministrator` would have made
+impossible.
+
+**Already prepared, so the day a certificate exists this is a short job:**
+
+- `packaging/accesscam.spec` takes `uac_uiaccess` from `ACCESSCAM_UIACCESS=1`,
+  opt-in and off by default. It **has** to be opt-in: Windows does not launch a
+  `uiAccess="true"` binary that fails the signing or location test in some
+  degraded mode, it refuses to start it at all — "A referral was returned from
+  the server", verified against an unsigned build. Unconditional would mean a
+  build nobody can run until the certificate is bought.
+- `mouse/windows.py` grew `has_uiaccess()` (reads `TokenUIAccess` from the
+  process token) and `can_reach_privileged_windows()`, and the M4.1 banner asks
+  the combined question. A signed, properly installed AccessCam holding UIAccess
+  is not running as administrator and does not need to be, so telling that user
+  to restart elevated would be crying wolf.
+
+**Still to decide, and both cost something:**
+
+1. **The certificate itself.** Roughly $100–400/year for a standard OV
+   certificate. An EV certificate clears SmartScreen immediately rather than
+   after building reputation, and costs more.
+2. **Install location.** UIAccess requires Program Files, but the installer is
+   currently per-user (`PrivilegesRequired=lowest`) precisely so it needs no
+   admin. A machine-wide install needs administrator rights **once, at install
+   time** — the same trade the SmartNav makes, and a normal thing for IT to do —
+   in exchange for never needing them again. Worth offering both: a per-user
+   install that works unelevated without UIAccess, and a machine-wide one that
+   gets it.
+
+*Done: either signed — with UIAccess enabled and the install location decided —
+or the SmartScreen warning documented at the point the user meets it.*
 
 **M4.9 — The README is stale.** It still says "There is no UI yet — you
 configure it with a JSON file", which is the front page of a repository whose

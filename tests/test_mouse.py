@@ -1,6 +1,8 @@
 """Cursor control tests. These use the recording backend so CI can run them
 on Linux without a display or a real pointer."""
 
+import sys
+
 import pytest
 
 from accesscam.mouse import ABSOLUTE_RANGE, CursorController, ScreenBounds, to_absolute
@@ -258,3 +260,40 @@ def test_single_monitor_backends_are_unaffected():
     cursor.move_by(-1000.0, -1000.0)
 
     assert cursor.position == (0.0, 0.0)
+
+
+# -- reaching privileged windows ------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="UIPI and UIAccess are Windows mechanisms")
+def test_uiaccess_is_reported_without_crashing():
+    """The real syscall, against this process.
+
+    Always False today - AccessCam is unsigned, so Windows will not grant
+    UIAccess - but the call has to actually succeed rather than fail its way to
+    the same answer, which is indistinguishable without checking.
+    """
+    from accesscam.mouse.windows import has_uiaccess
+
+    assert has_uiaccess() is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="UIPI and UIAccess are Windows mechanisms")
+@pytest.mark.parametrize(
+    ("elevated", "uiaccess", "expected"),
+    [
+        (False, False, False),
+        (True, False, True),  # administrator
+        (False, True, True),  # signed and installed, the SmartNav's route
+        (True, True, True),
+    ],
+)
+def test_either_route_counts_as_reaching_privileged_windows(
+    monkeypatch, elevated, uiaccess, expected
+):
+    from accesscam.mouse import windows as windows_backend
+
+    monkeypatch.setattr(windows_backend, "is_elevated", lambda: elevated)
+    monkeypatch.setattr(windows_backend, "has_uiaccess", lambda: uiaccess)
+
+    assert windows_backend.can_reach_privileged_windows() is expected

@@ -14,6 +14,7 @@
 # whoever launched it, says so in the window when that is not enough, and
 # offers the scheduled task as the way up.
 
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,28 @@ ROOT = Path(SPECPATH).parent
 sys.path.insert(0, str(ROOT / "src"))
 from accesscam import __version__  # noqa: E402
 from accesscam.ui.tray import APP_ICON  # noqa: E402
+
+
+# UIAccess: the mechanism that lets an unelevated program drive higher-integrity
+# windows - on-screen keyboards, UAC-elevated applications - which is exactly
+# what AccessCam needs and currently solves by running elevated instead. It is
+# how the SmartNav does it (its external smartnav.exe.manifest carries
+# level="asInvoker" uiAccess="true"), and it is strictly better: no admin
+# rights, no UAC prompt, and it works for a user who is not an administrator of
+# their own machine.
+#
+# Opt-in, and it has to be, because Windows grants UIAccess only when the
+# executable is BOTH Authenticode-signed by a trusted publisher AND installed
+# under Program Files (or System32). Fail either and the process does not
+# launch degraded - it does not launch at all: "A referral was returned from
+# the server", verified 2026-08-18 against an unsigned build in dist/. Making
+# this unconditional would produce a build that cannot start until the day a
+# certificate is bought.
+#
+#     set ACCESSCAM_UIACCESS=1     (release builds, once signing exists)
+#
+# See docs/PROJECT_PLAN.md M4.8 for the certificate question this waits on.
+UIACCESS = os.environ.get("ACCESSCAM_UIACCESS") == "1"
 
 
 def _art_filenames() -> list[str]:
@@ -148,6 +171,7 @@ exe = EXE(
     # No console. python.exe would put a black box behind the window at every
     # launch, for a program that has a GUI and prints to a log file instead.
     console=False,
+    uac_uiaccess=UIACCESS,
     icon=str(ROOT / "assets" / APP_ICON),
     version=_version_resource(),
 )

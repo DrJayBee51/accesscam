@@ -97,6 +97,86 @@ def is_elevated() -> bool:
         return False
 
 
+# TokenUIAccess, from the TOKEN_INFORMATION_CLASS enum. Absent from
+# ctypes.wintypes, and the only field of that token worth asking about here.
+_TOKEN_UIACCESS = 26
+_TOKEN_QUERY = 0x0008
+
+
+def has_uiaccess() -> bool:
+    """Whether this process holds UIAccess, the accessibility exemption to UIPI.
+
+    UIAccess is what assistive software is supposed to use, and what the
+    SmartNav actually uses - its manifest asks for `asInvoker` with
+    `uiAccess="true"`, so it runs at ordinary privilege, raises no UAC prompt,
+    works for a user who is not an administrator, and is still allowed to
+    deliver input to higher-integrity windows.
+
+    Windows grants it only to an executable that is Authenticode-signed *and*
+    installed somewhere a standard user cannot write - Program Files or
+    System32 - which is what stops anyone claiming the exemption for a binary
+    they just dropped on the desktop. AccessCam cannot ask for it until it is
+    signed (see M4.8), so this reports False for every build today; it exists
+    so that the day it stops doing so, nothing else has to change.
+    """
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+
+        # Every signature declared explicitly. ctypes defaults an undeclared
+        # argument to a 32-bit int, and GetCurrentProcess returns a
+        # pointer-sized pseudo-handle that overflows it on 64-bit Windows.
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.GetCurrentProcess.argtypes = []
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        advapi32.OpenProcessToken.argtypes = [
+            wintypes.HANDLE,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.HANDLE),
+        ]
+        advapi32.GetTokenInformation.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+
+        token = wintypes.HANDLE()
+        if not advapi32.OpenProcessToken(
+            kernel32.GetCurrentProcess(), _TOKEN_QUERY, ctypes.byref(token)
+        ):
+            return False
+
+        try:
+            granted = wintypes.DWORD()
+            size = wintypes.DWORD()
+            ok = advapi32.GetTokenInformation(
+                token,
+                _TOKEN_UIACCESS,
+                ctypes.byref(granted),
+                ctypes.sizeof(granted),
+                ctypes.byref(size),
+            )
+            return bool(ok and granted.value)
+        finally:
+            kernel32.CloseHandle(token)
+    except OSError:  # pragma: no cover - these libraries are always present
+        return False
+
+
+def can_reach_privileged_windows() -> bool:
+    """Whether hovering will actually register on an elevated window.
+
+    Two routes to the same place, and the distinction does not matter to the
+    user: administrator rights, or UIAccess. Asking the combined question is
+    what keeps the warning honest - a signed, properly installed AccessCam
+    holding UIAccess is *not* running as administrator and does not need to be,
+    and telling that user to elevate would be crying wolf.
+    """
+    return is_elevated() or has_uiaccess()
+
+
 def enable_dpi_awareness() -> bool:
     """Opt into per-monitor DPI awareness. Must run before any metrics call.
 

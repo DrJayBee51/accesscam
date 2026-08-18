@@ -72,7 +72,25 @@ def build_ico(sizes) -> bytes:
 
 
 def main() -> int:
-    out = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_OUT
+    argv = [a for a in sys.argv[1:] if a != "--force"]
+    force = "--force" in sys.argv[1:]
+    out = Path(argv[0]) if argv else DEFAULT_OUT
+
+    # This generates the *fallback* glyph. Once real artwork exists at the
+    # target path - which it does, hand-drawn - regenerating over it destroys
+    # work that cannot be recovered from source, since the source is a GIMP
+    # file this script knows nothing about. Refusing by default costs one flag
+    # on the rare occasion the fallback genuinely needs rebuilding.
+    if out.exists() and not force:
+        print(f"{out} already exists - refusing to overwrite it.", file=sys.stderr)
+        print(
+            "This script regenerates the drawn fallback glyph. If that file is "
+            "hand-drawn artwork, regenerating would discard it.",
+            file=sys.stderr,
+        )
+        print("Pass --force if you really mean to replace it.", file=sys.stderr)
+        return 1
+
     out.parent.mkdir(parents=True, exist_ok=True)
 
     QApplication([])
