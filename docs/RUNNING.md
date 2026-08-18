@@ -363,6 +363,29 @@ Give any setting a full working day before judging it. This was found over four
 days, not four minutes, and a curve that feels strange for ten minutes is often
 the right one.
 
+### Expect to notice it, and then to stop
+
+**What it feels like on the first day, measured 2026-08-17** on a full workday
+at `accel_floor` 0.35: the reduced gain is noticeable *while typing* — small
+head movements between keystrokes move the cursor less than they used to, and
+the pointer feels heavy starting out of rest. After **15–20 minutes it stops
+being noticeable at all**, and the same session was described as feeling like
+the SmartNav it replaces.
+
+Two things follow from that, and they matter more than the numbers:
+
+- **Do not judge the curve in the first ten minutes**, and do not turn it off
+  because the pointer feels heavy while you type. That sensation is the price
+  being paid, and it is refunded by the end of the first coffee.
+- **Re-tuning restarts the clock.** Adaptation is a one-off cost you have
+  already paid; changing `accel_floor` again asks for it a second time. Worth
+  it for a real problem, not for a tweak.
+
+If the heaviness *out of rest* is what bothers you rather than the resting
+precision, lower `accel_knee` rather than raising the floor: full gain then
+returns sooner once you actually start moving, leaving the precision at rest
+intact.
+
 ## When something bright keeps stealing the track
 
 A window in daylight images as bright as the marker, and neither the shape nor
