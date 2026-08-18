@@ -55,7 +55,7 @@ from accesscam.ui.controls import Tuner
 from accesscam.ui.curve import CurveWidget
 from accesscam.ui.help import HelpButton
 from accesscam.ui.preview import PreviewWidget
-from accesscam.ui.tray import Tray
+from accesscam.ui.tray import Tray, app_icon
 
 REFRESH_MS = 33  # ~30Hz, matching the camera rather than outrunning it
 
@@ -239,6 +239,7 @@ class MainWindow(QMainWindow):
         self.tray = None
 
         self.setWindowTitle(f"AccessCam {__version__}")
+        self.setWindowIcon(app_icon())
         self.setStyleSheet(STYLESHEET)
 
         root = QWidget()
@@ -1140,6 +1141,10 @@ def launch(
     # attached and nobody sees a non-zero exit: the symptom is simply that the
     # tray icon never appears, with nothing anywhere to explain why.
     app = QApplication(sys.argv)
+    # On the application as well as the window: dialogs opened before the
+    # window exists - the camera picker on a first run - inherit it, and
+    # Windows groups the taskbar button by it.
+    app.setWindowIcon(app_icon())
     log.info("Qt is up")
 
     try:

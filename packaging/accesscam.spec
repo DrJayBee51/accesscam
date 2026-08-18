@@ -26,7 +26,13 @@ a = Analysis(
     [str(ROOT / "src" / "accesscam" / "__main__.py")],
     pathex=[str(ROOT / "src")],
     binaries=[],
-    datas=[],
+    # Shipped artwork, looked up at runtime through accesscam.assets. Named
+    # rather than globbed so a stray file in assets/ cannot swell the bundle.
+    datas=[
+        (str(ROOT / "assets" / name), "assets")
+        for name in ("accesscam.ico", "tray-active.png", "tray-paused.png")
+        if (ROOT / "assets" / name).is_file()
+    ],
     hiddenimports=["accesscam.mouse.windows", "accesscam.hotkeys.windows"],
     hookspath=[],
     runtime_hooks=[],

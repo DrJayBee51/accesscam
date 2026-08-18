@@ -20,6 +20,8 @@ from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon, QWidget
 
+from accesscam.assets import asset
+
 ACTIVE = QColor(90, 200, 120)
 PAUSED = QColor(220, 90, 80)
 RING = QColor(232, 234, 240)
@@ -56,6 +58,13 @@ def marker_pixmap(colour: QColor, size: int = ICON_PX) -> QPixmap:
     return pixmap
 
 
+# Hand-drawn artwork, if any has been supplied. Two files rather than one: the
+# tray icon has to say whether the cursor is being driven, and that is the whole
+# reason for putting one there. Absent, the glyph below is drawn instead.
+TRAY_ART = {True: "tray-paused.png", False: "tray-active.png"}
+APP_ICON = "accesscam.ico"
+
+
 def marker_icon(colour: QColor) -> QIcon:
     """The tray glyph.
 
@@ -63,6 +72,34 @@ def marker_icon(colour: QColor) -> QIcon:
     the window are visibly talking about the same thing.
     """
     return QIcon(marker_pixmap(colour))
+
+
+def tray_icon(paused: bool) -> QIcon:
+    """The tray icon for this state: supplied artwork if present, else drawn."""
+    art = asset(TRAY_ART[paused])
+    if art is not None:
+        icon = QIcon(str(art))
+        if not icon.isNull():
+            return icon
+    return marker_icon(PAUSED if paused else ACTIVE)
+
+
+def app_icon() -> QIcon:
+    """The window, taskbar and Alt-Tab icon.
+
+    Falls back to the drawn glyph so a source checkout with no `assets/` still
+    shows something of its own rather than a generic interpreter icon.
+    """
+    art = asset(APP_ICON)
+    if art is not None:
+        icon = QIcon(str(art))
+        if not icon.isNull():
+            return icon
+
+    icon = QIcon()
+    for size in (16, 24, 32, 48, 64, 128, 256):
+        icon.addPixmap(marker_pixmap(ACTIVE, size))
+    return icon
 
 
 class Tray(QSystemTrayIcon):
@@ -115,7 +152,7 @@ class Tray(QSystemTrayIcon):
         if paused == self._paused:
             return
         self._paused = paused
-        self.setIcon(marker_icon(PAUSED if paused else ACTIVE))
+        self.setIcon(tray_icon(paused))
         self.setToolTip(
             "AccessCam — cursor parked (F9 to take control)"
             if paused
