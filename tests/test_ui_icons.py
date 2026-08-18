@@ -16,13 +16,6 @@ from accesscam.ui import tray as tray_module
 pytestmark = pytest.mark.usefixtures("qt_app")
 
 
-@pytest.fixture
-def art_dir(tmp_path, monkeypatch):
-    """An assets directory of this test's own."""
-    monkeypatch.setattr(assets, "asset_root", lambda: tmp_path)
-    return tmp_path
-
-
 def write_square(path, colour):
     """A recognisable one-colour icon, so the loader can be caught using it."""
     from PySide6.QtGui import QPixmap
@@ -79,3 +72,28 @@ def test_the_application_icon_carries_every_size_when_drawn(art_dir):
     icon = tray_module.app_icon()
     assert not icon.isNull()
     assert {size.width() for size in icon.availableSizes()} >= {16, 32, 256}
+
+
+# -- the artwork actually shipped in the repository ------------------------
+
+
+def test_the_shipped_tray_artwork_loads():
+    """Not isolated from assets/ on purpose: this checks what actually ships.
+
+    Everything above tests the loader in the abstract. This is the one test
+    that would fail if a real file went missing, got corrupted, or was saved
+    in a format Qt cannot decode - the kind of thing a diff does not catch.
+    """
+    for state, filename in tray_module.TRAY_ART.items():
+        path = assets.asset_root() / filename
+        if not path.is_file():
+            pytest.skip(f"{filename} not present - nothing shipped to check yet")
+        icon = tray_module.tray_icon(state)
+        assert not icon.isNull(), f"{filename} exists but failed to load"
+        pixmap = icon.pixmap(16, 16)
+        assert not pixmap.isNull()
+        # Something has to be opaque somewhere, or the icon is blank.
+        image = pixmap.toImage()
+        assert any(image.pixelColor(x, y).alpha() > 0 for x in range(16) for y in range(16)), (
+            f"{filename} renders as fully transparent at 16px"
+        )

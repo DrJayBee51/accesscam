@@ -44,6 +44,23 @@ class FakeCamera:
 
 
 @pytest.fixture
+def art_dir(tmp_path, monkeypatch):
+    """An assets directory of this test's own, empty until a test populates it.
+
+    `accesscam.assets.asset_root()` normally points at the real `assets/`
+    directory, where John's supplied artwork lives. A test asserting on the
+    *drawn* fallback glyph's exact pixels would pass or fail depending on
+    whether real art happens to be sitting there - which is not a property of
+    the code under test, so tests that care about the fallback specifically
+    redirect it here instead.
+    """
+    from accesscam import assets
+
+    monkeypatch.setattr(assets, "asset_root", lambda: tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
 def fake_camera():
     """The stand-in camera class, for tests that build their own.
 

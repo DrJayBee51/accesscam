@@ -82,6 +82,13 @@ work and better done once, here, than by every viewer.
 
 Tray PNGs: 32px or 64px square is plenty. Qt scales them down for the tray.
 
+## Editable sources
+
+Keep the working file (`.xcf`, `.psd`, whatever the tool produces) alongside
+its exported `.png`, the same way `hardware/` keeps a `.SLDPRT` beside its
+STL and STEP. Someone tweaking one state later should not have to redraw the
+other two from scratch to match.
+
 ## The fallback
 
 `tools/make_icon.py` regenerates `accesscam.ico` from the glyph drawn in

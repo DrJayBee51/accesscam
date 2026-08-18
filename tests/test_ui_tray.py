@@ -47,7 +47,7 @@ def test_the_glyph_draws_at_any_size():
         assert QColor(centre) == ACTIVE
 
 
-def test_the_states_differ_in_shape_and_not_only_in_colour(window):
+def test_the_states_differ_in_shape_and_not_only_in_colour(window, art_dir):
     # Green-driving against red-parked is the least legible pair for the
     # commonest colour blindness, in a tool whose whole purpose is access. The
     # marker is therefore present, absent, or struck through.
