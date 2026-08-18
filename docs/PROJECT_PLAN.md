@@ -398,10 +398,40 @@ went wrong. Worth a five-minute real check next time the installer runs on a
 machine with the task already set.
 *Done: removing AccessCam leaves no scheduled task and no broken shortcuts.*
 
-**M4.6 — Third-party licences.** MIT covers our code and nothing else. A
-distributed bundle ships PySide6 (LGPL-3), OpenCV (Apache-2.0) and NumPy (BSD),
-and only `LICENSE` exists today. LGPL in particular has obligations that a
-frozen binary does not satisfy by accident.
+**M4.6 — Third-party licences.** ✅ *Done 2026-08-18.* `THIRD-PARTY-NOTICES.md`
+covers what a build actually ships - PySide6/shiboken6 (LGPL-3.0-only, chosen
+from Qt's dual/triple licence rather than GPL or commercial), OpenCV
+(Apache-2.0 core, MIT wrapper), NumPy (BSD-3-Clause) - with the LGPL relinking
+question answered rather than waved at: AccessCam's build is one-folder
+specifically so Qt's DLLs sit beside `AccessCam.exe` as ordinary, unmodified,
+replaceable shared libraries, which is exactly the "suitable shared library
+mechanism" LGPLv3 §4(d)(1) describes as satisfying the licence without
+requiring source to be conveyed. Worth knowing this reasoning connects back to
+the M4.3 packaging-format decision, made for unrelated reasons, that happened
+to make the licensing question easy to answer honestly.
+
+The verbatim licence texts are vendored in `packaging/licenses/` - fetched
+directly (not through a summarising tool) for the LGPL-3.0 text Qt's own wheel
+does not include, and copied whole from the installed wheels for OpenCV and
+NumPy rather than hand-curated, so a future third-party component either of
+them bundles is not silently dropped. Both the frozen build (via the
+PyInstaller spec) and the installer (via `AccessCam.iss`, at the install root
+rather than buried under PyInstaller's `_internal\`, or the whole point is
+defeated) ship the notices and every licence file.
+
+A real gap turned up while wiring the build: the PyInstaller spec's artwork
+list still named only two of the three tray states, two commits after the
+third state was built - `tray-trouble.png` was never bundled, so a packaged
+build would have silently fallen back to the drawn glyph for the one state
+that matters most. Fixed by having the spec read the filenames from
+`accesscam.ui.tray.TRAY_ART` itself rather than a second, driftable list.
+
+`tools/check_licenses.py` (wired into CI as its own job) cross-checks
+`pyproject.toml`'s declared runtime dependencies, each package's actual
+installed licence metadata, and what `THIRD-PARTY-NOTICES.md` and
+`packaging/licenses/` claim - catching a dependency added without a licence
+entry, a vendored file going missing, or a package quietly relicensing between
+versions, none of which a passing test suite would ever notice on its own.
 *Done: a `THIRD-PARTY-NOTICES` file ships in the artifact, and the LGPL
 relinking question is answered explicitly rather than ignored.*
 

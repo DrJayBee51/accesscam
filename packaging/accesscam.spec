@@ -17,10 +17,20 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(SPECPATH).parent / "src"))
-from accesscam import __version__  # noqa: E402
-
 ROOT = Path(SPECPATH).parent
+sys.path.insert(0, str(ROOT / "src"))
+from accesscam import __version__  # noqa: E402
+from accesscam.ui.tray import APP_ICON  # noqa: E402
+
+
+def _art_filenames() -> list[str]:
+    from accesscam.ui.tray import TRAY_ART
+
+    return list(TRAY_ART.values())
+
+
+def _licence_filenames() -> list[str]:
+    return sorted(p.name for p in (ROOT / "packaging" / "licenses").glob("*.txt"))
 
 
 def _windows_version_tuple(version: str) -> tuple[int, int, int, int]:
@@ -83,12 +93,27 @@ a = Analysis(
     [str(ROOT / "src" / "accesscam" / "__main__.py")],
     pathex=[str(ROOT / "src")],
     binaries=[],
-    # Shipped artwork, looked up at runtime through accesscam.assets. Named
-    # rather than globbed so a stray file in assets/ cannot swell the bundle.
+    # Shipped artwork, looked up at runtime through accesscam.assets. The
+    # filenames come from accesscam.ui.tray itself rather than being retyped
+    # here - a hand-maintained list already drifted once: tray-trouble.png
+    # existed and was wired into the tray for two commits before this list
+    # was written, and was never added to it, so a packaged build silently
+    # fell back to the drawn glyph for the one state that matters most.
+    #
+    # Third-party licence notices travel the same way, so an installed copy
+    # never has to reach back to the GitHub repo to read what it is carrying.
     datas=[
         (str(ROOT / "assets" / name), "assets")
-        for name in ("accesscam.ico", "tray-active.png", "tray-paused.png")
+        for name in (*_art_filenames(), APP_ICON)
         if (ROOT / "assets" / name).is_file()
+    ]
+    + [
+        (str(ROOT / "packaging" / "licenses" / name), "licenses")
+        for name in _licence_filenames()
+    ]
+    + [
+        (str(ROOT / "THIRD-PARTY-NOTICES.md"), "."),
+        (str(ROOT / "LICENSE"), "."),
     ],
     hiddenimports=["accesscam.mouse.windows", "accesscam.hotkeys.windows"],
     hookspath=[],
@@ -123,7 +148,7 @@ exe = EXE(
     # No console. python.exe would put a black box behind the window at every
     # launch, for a program that has a GUI and prints to a log file instead.
     console=False,
-    icon=str(ROOT / "assets" / "accesscam.ico"),
+    icon=str(ROOT / "assets" / APP_ICON),
     version=_version_resource(),
 )
 

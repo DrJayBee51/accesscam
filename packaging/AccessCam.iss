@@ -52,6 +52,16 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 Source: "..\dist\AccessCam\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\tools\launch-elevated.vbs"; DestDir: "{app}"; Flags: ignoreversion
 
+; PyInstaller 6 relocates everything non-binary under _internal\ to keep the
+; app folder tidy, which is fine for artwork and DLLs nobody goes looking for
+; but defeats the point of a licence notice: it has to be somewhere a curious
+; user - or their IT department - finds it without digging. Placed at the
+; installed root, sourced straight from the repository rather than through
+; PyInstaller, since installed layout is this script's job, not the build's.
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\packaging\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
+
 [Icons]
 Name: "{group}\AccessCam"; Filename: "{app}\AccessCam.exe"
 Name: "{group}\AccessCam (start elevated)"; Filename: "{win}\System32\wscript.exe"; \

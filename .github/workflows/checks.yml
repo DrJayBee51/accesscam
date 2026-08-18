@@ -16,6 +16,20 @@ jobs:
       - name: Check part folders are complete
         run: python tools/check_hardware.py
 
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Only importlib.metadata is used, not the packages themselves - no
+      # system Qt/OpenGL libraries needed, unlike the tests job below.
+      - name: Install runtime dependencies
+        run: pip install -e .
+      - name: Check third-party licence coverage
+        run: python tools/check_licenses.py
+
   lint:
     runs-on: ubuntu-latest
     steps:
