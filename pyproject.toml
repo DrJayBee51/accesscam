@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "accesscam"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Head-tracking mouse using an IR camera and a retroreflective dot — an open-source replacement for the NaturalPoint SmartNav"
 readme = "README.md"
 license = "MIT"
@@ -25,6 +25,11 @@ dev = [
 
 [project.scripts]
 accesscam = "accesscam.__main__:main"
+
+# The version lives in the package, not here, so `--version`, the window title
+# and the built artifact can never disagree about which one they are.
+[tool.setuptools.dynamic]
+version = { attr = "accesscam.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

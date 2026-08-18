@@ -306,7 +306,7 @@ means the line after "Done:" is true, not that the work felt finished.
 
 #### Blocking — the release is broken or unshippable without these
 
-**M4.1 — Say in the window when it is not elevated.**
+**M4.1 — Say in the window when it is not elevated.** ✅ *Done 2026-08-18.*
 `warn_if_not_elevated()` is called once, at `app.py:127`, inside the *headless*
 `run()`. The UI path only writes elevation to the log. A packaged app has no
 console at all, so someone who double-clicks the exe gets an install where the
@@ -315,7 +315,7 @@ longest to attribute the first time anyone met it, and the one least likely to
 be reported as a bug rather than abandoned.
 *Done: the window says so unmissably while unelevated, and offers the fix.*
 
-**M4.2 — Single-instance detection.** Nothing implements it (searched:
+**M4.2 — Single-instance detection.** ✅ *Done 2026-08-18.* Nothing implements it (searched:
 no mutex, no lock). A second copy waits `--wait-for-camera` seconds for a
 camera the first copy holds, then blames the hardware in a dialog. Under the
 logon task with `pythonw` it dies with no console at all. A named mutex is the
@@ -356,7 +356,7 @@ relinking question is answered explicitly rather than ignored.*
 
 #### Needed before anyone else is asked to install it
 
-**M4.7 — Report a version.** `__version__ = "0.1.0"` exists in `__init__.py`
+**M4.7 — Report a version.** ✅ *Done 2026-08-18.* `__version__ = "0.1.0"` exists in `__init__.py`
 and is surfaced nowhere: no `--version`, no About. It is also duplicated in
 `pyproject.toml`, so the two can disagree. A bug report against "AccessCam" with
 no version is nearly useless.

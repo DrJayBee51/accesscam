@@ -47,7 +47,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from accesscam import single_instance, startup
+from accesscam import __version__, single_instance, startup
 from accesscam.config import Config, config_path
 from accesscam.engine import Engine
 from accesscam.log import log
@@ -238,7 +238,7 @@ class MainWindow(QMainWindow):
         self.quit_requested = False
         self.tray = None
 
-        self.setWindowTitle("AccessCam")
+        self.setWindowTitle(f"AccessCam {__version__}")
         self.setStyleSheet(STYLESHEET)
 
         root = QWidget()

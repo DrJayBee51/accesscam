@@ -16,6 +16,7 @@ from pathlib import Path
 
 import cv2
 
+from accesscam import __version__
 from accesscam.camera import CameraError, CameraSettings, CameraSource, probe_devices
 from accesscam.config import Config, config_path
 from accesscam.engine import Engine
@@ -183,6 +184,12 @@ def main() -> int:
     log_file = start_logging()
 
     parser = argparse.ArgumentParser(prog="accesscam", description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"AccessCam {__version__}",
+        help="print the version and exit",
+    )
     parser.add_argument("--config", type=Path, default=None, help="path to a config file")
     parser.add_argument("--device", type=int, default=None, help="camera index override")
     parser.add_argument("--hotkey", default=None, help="pause hotkey override, e.g. f9")
@@ -228,7 +235,7 @@ def main() -> int:
     args = parser.parse_args()
 
     log.info("--- starting: %s", " ".join(sys.argv[1:]) or "(no arguments)")
-    log.info("running %s", sys.executable)
+    log.info("AccessCam %s running %s", __version__, sys.executable)
     if sys.platform == "win32":
         from accesscam.mouse.windows import is_elevated
 
