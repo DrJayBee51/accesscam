@@ -300,26 +300,100 @@ camera is captive.
 PyInstaller one-folder build, versioned GitHub Release, install/setup guide
 with photos, printable STL + filter/dot instructions published in `hardware/`.
 
-**What stands between the repo and something installable** (surveyed
-2026-08-16, in the order worth doing):
+**Remaining work, itemised** (re-surveyed against the code 2026-08-18). Done
+means the line after "Done:" is true, not that the work felt finished.
 
-1. ~~A first run cannot get past a camera it fails to open.~~ ✅ Done — see M3.
-2. **The window never mentions elevation.** `warn_if_not_elevated` is only
-   called on the headless path, where it prints to a console. A packaged app
-   has none, so someone who double-clicks the exe gets an install where the
-   cursor moves but hover-driven UI silently ignores it — the failure that took
-   longest to attribute the first time. It needs saying in the window.
-3. **Single-instance detection**, already listed under M3. A second copy
-   currently waits a minute for a camera the first one holds and then reports
-   it as a hardware problem.
-4. **The build itself.** No spec file, icon, or release job exists yet.
-   PyInstaller 6.22.1 supports the 3.14 venv, so the risk table's "pin to 3.12"
-   contingency looks unnecessary; `startup.executable()` already handles being
-   frozen, so the logon task needs no change.
-5. **The binary will be unsigned**, so SmartScreen will warn on first launch and
-   the install guide has to say so plainly rather than let it look like malware.
-6. **Nothing reports a version** — no `--version`, no About. A released artifact
-   has to be able to say which one it is.
+#### Blocking — the release is broken or unshippable without these
+
+**M4.1 — Say in the window when it is not elevated.**
+`warn_if_not_elevated()` is called once, at `app.py:127`, inside the *headless*
+`run()`. The UI path only writes elevation to the log. A packaged app has no
+console at all, so someone who double-clicks the exe gets an install where the
+cursor moves but every hover-driven window ignores it — the failure that took
+longest to attribute the first time anyone met it, and the one least likely to
+be reported as a bug rather than abandoned.
+*Done: the window says so unmissably while unelevated, and offers the fix.*
+
+**M4.2 — Single-instance detection.** Nothing implements it (searched:
+no mutex, no lock). A second copy waits `--wait-for-camera` seconds for a
+camera the first copy holds, then blames the hardware in a dialog. Under the
+logon task with `pythonw` it dies with no console at all. A named mutex is the
+usual answer; the choice worth making is whether the second copy exits quietly
+or hands focus to the first, and the latter is what a user double-clicking a
+shortcut twice actually means.
+*Done: launching twice surfaces the running instance and never accuses the camera.*
+
+**M4.3 — The build.** No spec file, no build script, no release job. The icon
+now exists (`assets/accesscam.ico`). PyInstaller 6.22.1 supports the 3.14 venv,
+so the risk table's "pin to 3.12" contingency looks unnecessary, and
+`startup.executable()` already handles being frozen, so the logon task needs no
+change. The unknown is Qt and OpenCV plugin bundling, which is never right
+first try.
+*Done: a one-folder build launches on a Windows machine that has never had
+Python, opens the camera, and registers the logon task from the checkbox.*
+
+**M4.4 — Decide the distribution shape.** A zip the user unpacks, or an
+installer (Inno Setup). This is a prerequisite for M4.5 rather than a
+preference: it decides where the app lives, who makes the Start-menu shortcut,
+and whether there is an uninstaller at all.
+*Done: decided and written down here, with the reason.*
+
+**M4.5 — Uninstall has to remove the logon task.** The task survives deleting
+the application, and then fails at every logon forever, pointing at a path that
+no longer exists. `startup.disable()` already does the work; nothing calls it
+at uninstall time because there is no uninstall time yet. Config and log in
+`%APPDATA%\AccessCam` should be left alone — settings someone tuned over days
+are not the installer's to throw away.
+*Done: removing AccessCam leaves no scheduled task and no broken shortcuts.*
+
+**M4.6 — Third-party licences.** MIT covers our code and nothing else. A
+distributed bundle ships PySide6 (LGPL-3), OpenCV (Apache-2.0) and NumPy (BSD),
+and only `LICENSE` exists today. LGPL in particular has obligations that a
+frozen binary does not satisfy by accident.
+*Done: a `THIRD-PARTY-NOTICES` file ships in the artifact, and the LGPL
+relinking question is answered explicitly rather than ignored.*
+
+#### Needed before anyone else is asked to install it
+
+**M4.7 — Report a version.** `__version__ = "0.1.0"` exists in `__init__.py`
+and is surfaced nowhere: no `--version`, no About. It is also duplicated in
+`pyproject.toml`, so the two can disagree. A bug report against "AccessCam" with
+no version is nearly useless.
+*Done: one source of truth, reachable from both the command line and the window.*
+
+**M4.8 — SmartScreen.** The binary will be unsigned, so the first launch shows
+"Windows protected your PC". A certificate is the real fix and costs money
+annually; the honest alternative is to say plainly in the install guide what
+the warning is and why it appears. Either is defensible; silence is not, because
+it looks exactly like malware behaving normally.
+*Done: either signed, or documented at the point the user meets it.*
+
+**M4.9 — The README is stale.** It still says "There is no UI yet — you
+configure it with a JSON file", which is the front page of a repository whose
+whole point by then is a downloadable application.
+*Done: the front page describes what M4 actually ships.*
+
+**M4.10 — Install and setup guide with photos.** `docs/RUNNING.md` is written
+for someone with a clone, a venv and a terminal. The installing user has an
+exe, a camera in a box, and a piece of reflective tape.
+*Done: a guide that starts at "download this" and ends at a moving cursor.*
+
+#### Known gaps that M4 consciously ships with
+
+- **The hotkey can only be changed by editing JSON** (`hotkey` is M5). A user
+  whose F9 is already claimed has to hand-edit a config file, which is a poor
+  answer but a known one — write it in the guide rather than pretend.
+- **Eleven settings remain unreachable from the window** (M3 lists them).
+- **Relative mode only**; absolute still needs a screen-selection decision.
+
+#### The hardware half
+
+Blocked on the M3 production housing, which has not been started — still the M1
+slot-in prototype. Also blocked on **choosing the camera**: the ELP model was
+added on 2026-08-16 as a candidate against the Arducam B0205, and the housing
+cannot be finished until that is settled. M4 needs the printable STL, the
+filter and dot instructions, and the bezel range published alongside the
+software.
 
 ### M5 — v2 features
 Dwell clicking (dwell time, click type, visual countdown), calibration wizard,
