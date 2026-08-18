@@ -20,6 +20,7 @@ Platform order: **Windows → Linux → macOS.**
 | v1 scope | Cursor movement only | User clicks by other means today; dwell click is v2 |
 | License / visibility | MIT, public GitHub repo | Help other stranded SmartNav users; invite contributors |
 | Camera (initial) | Arducam 1080P Day/Night USB (OV2710, 850nm IR LEDs) | Already owned; UVC so no drivers needed |
+| **Camera (shipping default), 2026-08-18** | **The same Arducam B0205** | Confirmed rather than merely inherited, after months of daily use: it is sufficient for what AccessCam does and outperforms any comparable platform available today. The ELP model in `hardware/` was evaluated as an alternative and is not chosen. Anything UVC still works — this is the camera the housing is built around and the documentation assumes |
 
 ## Architecture
 
@@ -388,12 +389,16 @@ exe, a camera in a box, and a piece of reflective tape.
 
 #### The hardware half
 
-Blocked on the M3 production housing, which has not been started — still the M1
-slot-in prototype. Also blocked on **choosing the camera**: the ELP model was
-added on 2026-08-16 as a candidate against the Arducam B0205, and the housing
-cannot be finished until that is settled. M4 needs the printable STL, the
-filter and dot instructions, and the bezel range published alongside the
-software.
+**The camera is decided: the Arducam B0205, as of 2026-08-18.** It is
+sufficient for what AccessCam does and outperforms any comparable platform on
+sale, and it has months of daily use behind it rather than a spec sheet. The
+ELP model stays in `hardware/` as an evaluated alternative, not a candidate.
+That unblocks the production housing, which can now be dimensioned against one
+camera instead of hedging between two.
+
+What remains is the M3 production housing itself, which has not been started —
+still the M1 slot-in prototype. M4 then needs the printable STL, the filter and
+dot instructions, and the bezel range published alongside the software.
 
 ### M5 — v2 features
 Dwell clicking (dwell time, click type, visual countdown), calibration wizard,

@@ -11,6 +11,19 @@
 | Lens | 105° F1.6 "starlight" | Wide FOV means fewer pixels per degree of head motion; crop/ROI in software if needed |
 | Interface | USB 2.0 UVC | Driverless on Windows/Linux/macOS |
 
+**This is the shipping default, decided 2026-08-18** — confirmed after months
+of daily use rather than inherited by accident. It is sufficient for what
+AccessCam does and outperforms any comparable platform on sale, so the
+production housing is dimensioned around this module and the documentation
+assumes it. An ELP module was modelled in `hardware/ELP_Camera/` and evaluated
+as an alternative; it is kept for reference and is not chosen.
+
+AccessCam itself stays camera-agnostic: it speaks UVC, and `--list-devices`
+identifies a candidate by whether it grants 1920×1080. Any IR-capable UVC
+camera will drive the cursor. What is specific to the Arducam is the *housing*
+and the photoresistor shroud below, which is a property of this board rather
+than of the software.
+
 ## ⚠️ Critical: force night mode
 
 The board's photoresistor senses **ambient visible light**. In a normally lit
