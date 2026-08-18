@@ -174,6 +174,20 @@ def heading(text: str) -> QLabel:
     return label
 
 
+def _is_elevated() -> bool:
+    """Whether this process can deliver input to privileged windows.
+
+    True everywhere but Windows: UIPI is a Windows mechanism, and a warning
+    about it elsewhere would be noise about a problem that cannot occur.
+    """
+    if sys.platform != "win32":
+        return True
+
+    from accesscam.mouse.windows import is_elevated
+
+    return is_elevated()
+
+
 def hint(text: str) -> QLabel:
     label = QLabel(text)
     label.setObjectName("tunerHelp")
@@ -228,6 +242,9 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(14)
 
+        self.elevation_banner = self._build_elevation_banner()
+        layout.addWidget(self.elevation_banner)
+
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_camera_tab(), "Camera && Marker")
         self.tabs.addTab(self._build_movement_tab(), "Cursor Movement")
@@ -254,6 +271,69 @@ class MainWindow(QMainWindow):
         self.timer.start(REFRESH_MS)
 
     # -- construction ------------------------------------------------------
+
+    def _build_elevation_banner(self) -> QWidget:
+        """A standing warning while AccessCam lacks administrator rights.
+
+        Not a dialog. UIPI makes an unelevated AccessCam *look* like it works -
+        the cursor moves, because the cursor is global - while every window at
+        higher integrity ignores the pointer hovering over it. On-screen
+        keyboards stop highlighting, UAC prompts do not respond, and nothing
+        anywhere says why. A dialog would be dismissed in the first minute and
+        the symptom met an hour later; this stays until the cause is gone.
+
+        Hidden entirely when elevated, so the normal case pays nothing for it.
+        """
+        banner = QFrame()
+        banner.setObjectName("elevationBanner")
+        banner.setStyleSheet(
+            "#elevationBanner { background: #4a3410; border: 1px solid #7a5a1e; "
+            "border-radius: 6px; }"
+        )
+        row = QHBoxLayout(banner)
+        row.setContentsMargins(12, 7, 12, 7)
+        row.setSpacing(12)
+
+        # One line, deliberately. The window is fixed-size and sits 74px under
+        # what a small laptop screen can show; a two-line banner spends all of
+        # that and the layout starts clamping. The detail lives in the help
+        # button beside it, where there is room for it.
+        message = QLabel("Not running as administrator — hovering will be ignored")
+        message.setToolTip(
+            "Windows blocks a normal-privilege program from delivering input to a "
+            "higher-privilege window. The cursor still moves, because the cursor is "
+            "global, but the window under it never receives the hover: on-screen "
+            "keyboards stop highlighting keys, UAC prompts do not respond, and "
+            "anything running as administrator ignores the pointer entirely."
+        )
+        row.addWidget(message, 0)
+        row.addStretch(1)
+
+        self.elevate_button = QPushButton("Restart as administrator")
+        self.elevate_button.clicked.connect(self._restart_elevated)
+        row.addWidget(self.elevate_button, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        # Visible from the start so that `_lock_size` measures the window with
+        # the strip in it. The window is fixed-size: revealing the banner after
+        # locking takes its height out of the tabs instead, and the two tabs do
+        # not give it up equally, which breaks the matched card heights.
+        banner.setVisible(not _is_elevated())
+        return banner
+
+    def _restart_elevated(self) -> None:
+        """Hand over to an elevated copy, then get out of its way.
+
+        Quitting matters as much as starting: a camera cannot be opened twice,
+        and the new copy is already waiting for this one to let go of it.
+        """
+        outcome = startup.relaunch_elevated()
+        if not outcome.ok:
+            QMessageBox.warning(self, "Could not restart as administrator", outcome.message)
+            return
+
+        log.info("handed over to an elevated copy - quitting")
+        self.quit_requested = True
+        QApplication.quit()
 
     def _scrolling(self, widgets: list[QWidget], card: bool = False) -> QScrollArea:
         inner = QFrame()

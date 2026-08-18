@@ -44,6 +44,10 @@ def supported() -> bool:
 # anyone looked. Waiting a minute costs nothing at logon and covers a slow hub.
 CAMERA_WAIT_SECONDS = 60
 
+# How long a relaunched copy waits for the camera. It only has to outlast the
+# copy that is quitting to make room for it, which takes about a second.
+RELAUNCH_WAIT_SECONDS = 20
+
 
 def executable() -> str:
     """The command the task should run.
@@ -183,4 +187,67 @@ def disable() -> Outcome:
         False,
         "Could not remove the logon task. Removing it needs the same "
         "administrator rights that creating it did." + (f"\n\n{detail[-1]}" if detail else ""),
+    )
+
+
+def _current_invocation() -> tuple[str, str]:
+    """The executable and arguments that would start this program again.
+
+    Mirrors how it is actually running rather than how the logon task starts
+    it: a relaunch should carry the flags the user is already using.
+    """
+    import subprocess as _sp
+
+    exe = Path(sys.executable)
+    arguments = sys.argv[1:]
+
+    # A camera cannot be opened twice, and the copy being replaced is still
+    # holding it for the moment it takes this one to quit. argparse takes the
+    # last occurrence, so appending overrides whatever was there.
+    arguments = [*arguments, "--wait-for-camera", str(RELAUNCH_WAIT_SECONDS)]
+
+    if exe.stem.lower() not in {"python", "pythonw"}:
+        return str(exe), _sp.list2cmdline(arguments)
+
+    windowed = exe.with_name("pythonw.exe")
+    interpreter = windowed if windowed.exists() else exe
+    return str(interpreter), _sp.list2cmdline(["-m", "accesscam", *arguments])
+
+
+def relaunch_elevated() -> Outcome:
+    """Start an elevated copy of AccessCam. The caller is expected to quit.
+
+    Prefers the scheduled task. Task Scheduler runs it at highest privileges
+    and asks nobody, whereas every other route to administrator raises a UAC
+    prompt on the secure desktop - which a head-tracked cursor cannot reach,
+    because this process is not elevated at that moment by definition. For the
+    person this application exists for, an unanswerable prompt is worse than no
+    offer at all, so the prompting route is the fallback rather than the plan.
+    """
+    if not supported():
+        return Outcome(False, "Relaunching elevated is only wired up for Windows so far.")
+
+    if is_enabled():
+        result = _run(["schtasks", "/run", "/tn", TASK_NAME])
+        if result.returncode == 0:
+            return Outcome(True)
+
+    import ctypes
+
+    exe, arguments = _current_invocation()
+    # ShellExecuteW returns a value above 32 on success. It is the documented
+    # way to ask for elevation; CreateProcess cannot raise a UAC prompt.
+    code = ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, arguments, None, 1)
+    if code > 32:
+        return Outcome(True)
+    if code == 1223:  # ERROR_CANCELLED - the user said no to UAC
+        return Outcome(
+            False,
+            "The elevation prompt was declined, so AccessCam is still running "
+            "without administrator rights.",
+        )
+    return Outcome(
+        False,
+        "Could not start an elevated copy of AccessCam. Registering the logon task from "
+        "this tab makes this work without a prompt at all.",
     )

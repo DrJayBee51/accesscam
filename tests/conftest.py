@@ -85,7 +85,14 @@ def window(qt_app, monkeypatch):
     from accesscam.mouse import CursorController
     from accesscam.mouse.base import ScreenBounds
     from accesscam.mouse.fake import RecordingMouse
+    from accesscam.ui import main_window as main_window_module
     from accesscam.ui.main_window import MainWindow
+
+    # Pin the elevation warning on. Left to the real answer the layout tests
+    # would depend on whether the suite happens to be run from an elevated
+    # terminal, and the banner is the taller of the two cases - so testing it
+    # is testing the one that can overflow a small screen.
+    monkeypatch.setattr(main_window_module, "_is_elevated", lambda: False)
 
     config = Config()
     engine = Engine(
