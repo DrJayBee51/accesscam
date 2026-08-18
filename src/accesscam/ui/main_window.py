@@ -28,7 +28,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QAbstractNativeEventFilter, Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -47,7 +47,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from accesscam import startup
+from accesscam import single_instance, startup
 from accesscam.config import Config, config_path
 from accesscam.engine import Engine
 from accesscam.log import log
@@ -76,6 +76,10 @@ TAB_SPACING = 16
 # How often to look for a system tray that was not there at startup. Checking
 # is a single cheap call, and the shell it is waiting for takes seconds.
 _TRAY_RETRY_INTERVAL = 1.0
+
+# One broadcast lands on every top-level window we own; treat arrivals inside
+# this window as the same request.
+_REVEAL_DEBOUNCE = 1.0
 
 STYLESHEET = """
 QWidget { background: #17171a; color: #e4e4e8; font-size: 13px; }
@@ -1020,6 +1024,16 @@ class MainWindow(QMainWindow):
             self._speed += 0.25 * (travelled / dt - self._speed)
         self._last_position, self._last_time = position, now
 
+    def reveal(self) -> None:
+        """Bring the window back from the tray, or from behind everything.
+
+        Wanted from two directions: the tray menu, and a second copy of
+        AccessCam handing over rather than starting.
+        """
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt's naming
         """Hide to the tray rather than quit, unless quitting was asked for.
 
@@ -1037,6 +1051,54 @@ class MainWindow(QMainWindow):
         self.hide()
 
 
+class _RevealFilter(QAbstractNativeEventFilter):
+    """Surfaces the window when a second copy of AccessCam asks it to.
+
+    A registered window message rather than looking the window up by title:
+    titles are localised and duplicated, and the message id is guaranteed
+    identical in every process that asks for the same name.
+    """
+
+    def __init__(self, reveal) -> None:
+        super().__init__()
+        self._reveal = reveal
+        self._message = single_instance.reveal_message()
+        self._last = 0.0
+
+    def nativeEventFilter(self, event_type, message):  # noqa: N802 - Qt's naming
+        if event_type != b"windows_generic_MSG" or not self._message:
+            return False, 0
+
+        import ctypes
+        from ctypes import wintypes
+
+        class MSG(ctypes.Structure):
+            _fields_ = (
+                ("hwnd", wintypes.HWND),
+                ("message", wintypes.UINT),
+                ("wParam", wintypes.WPARAM),
+                ("lParam", wintypes.LPARAM),
+                ("time", wintypes.DWORD),
+                ("pt_x", wintypes.LONG),
+                ("pt_y", wintypes.LONG),
+            )
+
+        if ctypes.cast(int(message), ctypes.POINTER(MSG)).contents.message == self._message:
+            # A broadcast is delivered to every top-level window this process
+            # owns, not once to the process, so one request arrives several
+            # times. Revealing twice is harmless; saying so twice in the log is
+            # the kind of noise that makes a log worth less.
+            now = time.monotonic()
+            if now - self._last > _REVEAL_DEBOUNCE:
+                self._last = now
+                log.info("a second copy asked for the window - revealing it")
+                self._reveal()
+
+        # Never consume it. Other applications register their own messages and
+        # a broadcast passes through every top-level window on the desktop.
+        return False, 0
+
+
 def launch(
     config: Config,
     config_file: Path | None = None,
@@ -1050,6 +1112,16 @@ def launch(
     from accesscam.mouse import CursorController, create_backend
     from accesscam.mouse.fake import RecordingMouse
     from accesscam.ui.first_run import choose_camera
+
+    # Before anything else, including Qt. A second copy has nothing useful to
+    # do and every reason to get out of the way quickly - the first copy holds
+    # the camera, and starting a Qt application only to exit is time the user
+    # spends watching nothing happen.
+    instance = single_instance.claim()
+    if instance is None:
+        log.info("AccessCam is already running - handing it the foreground")
+        single_instance.reveal_running_instance()
+        return 0
 
     # Before QApplication: creating the Windows backend is what makes the
     # process per-monitor DPI aware, and Qt adopts that rather than imposing
@@ -1087,6 +1159,10 @@ def launch(
     window = MainWindow(engine, config, config_file)
     log.info("window built")
 
+    reveal_filter = _RevealFilter(window.reveal)
+    app.installNativeEventFilter(reveal_filter)
+    single_instance.accept_reveal_from_lesser_processes(int(window.winId()))
+
     # The camera's patience governs the tray's as well. Both are waiting for
     # the same thing - a machine that has only just finished logging in - and a
     # second flag saying the same thing in different words would only ever be
@@ -1114,6 +1190,7 @@ def launch(
         if listener is not None:
             listener.stop()
         camera.close()
+        instance.release()
 
 
 def _install_tray(

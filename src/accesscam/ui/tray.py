@@ -125,9 +125,7 @@ class Tray(QSystemTrayIcon):
 
     def reveal(self) -> None:
         """Bring the settings window back, wherever it went."""
-        self._window.showNormal()
-        self._window.raise_()
-        self._window.activateWindow()
+        self._window.reveal()
 
     # -- internals ---------------------------------------------------------
 
