@@ -5,12 +5,17 @@ The engine reports what happened - frames, marker found or not - and this
 decides when a run of those readings has become something worth putting in
 front of a person.
 
-The whole difficulty is hysteresis. Losing the marker is *normal*: you look at
-the keyboard, you lean out of frame, someone walks between you and the camera.
-An indicator that flipped on every one of those would be noise, and noise in
-the notification area is worse than silence because it teaches you to ignore
-the thing exactly before it matters. So a condition has to persist before it is
-reported, and stops being reported the moment it clears.
+The bar is high, and it moved higher once. Losing the marker is *normal* - not
+only glancing at the keyboard, but leaving the desk for a meal and coming back
+to a tracker that picks up where it left off, which is what the SmartNav does
+and what AccessCam already did. Reporting that as a fault would have painted
+the tray red through every lunch. It is no longer reported at all; the window
+says whether the marker is currently visible, for anyone who is actually asking.
+
+What is left is hysteresis on the conditions that *are* faults. Each has to
+persist before it is shown and clears the moment it stops - slow to complain,
+quick to forgive - because an indicator that cries wolf gets ignored on the one
+occasion it is right.
 """
 
 from __future__ import annotations
@@ -24,11 +29,6 @@ from dataclasses import dataclass
 NO_FRAMES_AFTER = 3.0
 NO_FRAMES_BELOW_FPS = 5.0
 
-# Driving, but the marker has not been seen. Long enough to cover looking down
-# at the keyboard and back, which is the commonest way to lose it and is not a
-# fault.
-NO_MARKER_AFTER = 6.0
-
 
 @dataclass(frozen=True)
 class Trouble:
@@ -41,15 +41,9 @@ class Trouble:
 class Health:
     """Watches a stream of engine statuses and reports sustained problems."""
 
-    def __init__(
-        self,
-        no_frames_after: float = NO_FRAMES_AFTER,
-        no_marker_after: float = NO_MARKER_AFTER,
-    ) -> None:
+    def __init__(self, no_frames_after: float = NO_FRAMES_AFTER) -> None:
         self._no_frames_after = no_frames_after
-        self._no_marker_after = no_marker_after
         self._starved_since: float | None = None
-        self._unseen_since: float | None = None
         # Set once at startup and never cleared: a hotkey that would not
         # register will not start working later in the session, and it means
         # the cursor cannot be parked, which is the one control that matters.
@@ -65,14 +59,8 @@ class Health:
         starved = status.fps < NO_FRAMES_BELOW_FPS
         self._starved_since = self._track(starved, self._starved_since, now)
 
-        # Only while driving. Parked, not seeing the marker is exactly what is
-        # supposed to be happening, and flagging it would make the parked state
-        # permanently look broken.
-        unseen = not status.paused and not status.tracking
-        self._unseen_since = self._track(unseen, self._unseen_since, now)
-
-        # Ordered by how completely each one stops AccessCam working. A dead
-        # camera makes the other two moot.
+        # Ordered by how completely each one stops AccessCam working, since
+        # only one of them fits on an icon. A dead camera makes the other moot.
         if self._held(self._starved_since, now, self._no_frames_after):
             return Trouble(
                 "camera",
@@ -84,12 +72,6 @@ class Health:
                 "hotkey",
                 f"The pause hotkey is not available, so the cursor cannot be "
                 f"parked from the keyboard. {self.hotkey_problem}",
-            )
-        if self._held(self._unseen_since, now, self._no_marker_after):
-            return Trouble(
-                "marker",
-                "The marker has not been seen for a while. Check that it is in "
-                "view and that nothing brighter is competing with it.",
             )
         return None
 

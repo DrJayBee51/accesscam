@@ -61,37 +61,21 @@ def test_recovery_clears_the_report_immediately():
     assert health.update(status(fps=30.0), now=1.1) is None
 
 
-# -- the marker ------------------------------------------------------------
+# -- the marker, which is deliberately not a fault ------------------------
 
 
-def test_losing_the_marker_while_driving_is_reported():
-    health = Health(no_marker_after=6.0)
+def test_losing_the_marker_is_never_reported():
+    """The change that came out of real use, 2026-08-18.
 
-    assert health.update(status(tracking=False), now=0.0) is None
-    trouble = health.update(status(tracking=False), now=6.0)
+    John leaves his desk to eat and comes back to a tracker that picks up where
+    it left off - which is what the SmartNav does, and what AccessCam already
+    did. A red icon through every lunch would have been the clearest possible
+    example of an indicator that teaches you to ignore it.
+    """
+    health = Health()
 
-    assert trouble is not None
-    assert trouble.reason == "marker"
-
-
-def test_losing_the_marker_while_parked_is_not_a_problem():
-    # Parked, not seeing the marker is exactly what is supposed to be
-    # happening. Flagging it would make the parked state look permanently
-    # broken, which is most of the time.
-    health = Health(no_marker_after=1.0)
-
-    health.update(status(tracking=False, paused=True), now=0.0)
-    assert health.update(status(tracking=False, paused=True), now=100.0) is None
-
-
-def test_glancing_at_the_keyboard_does_not_trip_it():
-    health = Health(no_marker_after=6.0)
-
-    for moment in (0.0, 1.0, 2.0, 3.0):
+    for moment in (0.0, 10.0, 60.0, 3600.0):
         assert health.update(status(tracking=False), now=moment) is None
-    assert health.update(status(tracking=True), now=3.5) is None
-    assert health.update(status(tracking=False), now=4.0) is None
-    assert health.update(status(tracking=False), now=9.0) is None  # clock restarted
 
 
 # -- the hotkey ------------------------------------------------------------
@@ -119,15 +103,14 @@ def test_a_dead_camera_outranks_a_missing_hotkey():
     assert health.update(status(fps=0.0), now=0.0).reason == "camera"
 
 
-@pytest.mark.parametrize("reason", ["camera", "marker", "hotkey"])
+@pytest.mark.parametrize("reason", ["camera", "hotkey"])
 def test_every_report_says_what_to_do_about_it(reason):
     # A tooltip that says "error" is only marginally better than a blank icon.
-    health = Health(no_frames_after=0.0, no_marker_after=0.0)
+    health = Health(no_frames_after=0.0)
     if reason == "hotkey":
         health.note_hotkey_failure("F9 could not be registered.")
-    trouble = health.update(
-        status(fps=0.0 if reason == "camera" else 30.0, tracking=reason != "marker"),
-        now=0.0,
-    )
+
+    trouble = health.update(status(fps=0.0 if reason == "camera" else 30.0), now=0.0)
+
     assert trouble.reason == reason
     assert len(trouble.detail) > 30

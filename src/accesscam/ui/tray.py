@@ -212,7 +212,13 @@ class Tray(QSystemTrayIcon):
         self._state = (state, detail)
 
         self.setIcon(tray_icon(state))
-        self.setToolTip(_TOOLTIPS[state] if state != "trouble" else f"AccessCam — {detail}")
+        if state == "trouble":
+            self.setToolTip(f"AccessCam — {detail}")
+        else:
+            # A note rather than a warning. Not seeing the marker is ordinary -
+            # you left the desk - so it belongs in the text nobody reads unless
+            # they are already asking, and not on the icon everybody sees.
+            self.setToolTip(_TOOLTIPS[state] + (f"\n{detail}" if detail else ""))
         paused = state != "active"
         self.pause_action.setText("Take control  (F9)" if paused else "Park the cursor  (F9)")
 

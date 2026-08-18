@@ -990,7 +990,10 @@ class MainWindow(QMainWindow):
             if trouble is not None:
                 self.tray.set_state("trouble", trouble.detail)
             else:
-                self.tray.set_state("parked" if paused else "active")
+                self.tray.set_state(
+                    "parked" if paused else "active",
+                    "" if status.tracking else "the marker is not in view",
+                )
 
         state = "paused" if paused else "active"
         if self.state_button.property("state") != state:

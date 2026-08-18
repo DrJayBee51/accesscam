@@ -21,7 +21,7 @@ the marker on the face.
 |---|---|---|
 | Active | AccessCam has the pointer and can see you | Silhouette **with** the marker |
 | Parked | Running, but not driving the cursor — F9 to take it | Silhouette **without** the marker |
-| Trouble | Running, but something is stopping it working | Silhouette with a **red X** |
+| Trouble | Running, but something is stopping it working — a dead camera, or a hotkey that would not register | Silhouette with a **red X** |
 
 The three differ in *what is drawn*, not only in colour, which is the point —
 see below.
@@ -30,10 +30,17 @@ see below.
 
 - **No frames from the camera** for 3 seconds. Unplugged, driver fallen over,
   or another application has taken it.
-- **The marker unseen for 6 seconds while driving.** Long enough to cover
-  glancing at the keyboard and back, which is not a fault.
 - **The pause hotkey would not register**, which is permanent for the session
   and means the cursor cannot be parked from the keyboard.
+
+**A missing marker is not trouble**, and that is worth stating because it looks
+like the obvious candidate. Losing it is ordinary: you leave the desk to eat and
+come back to a tracker that picks up where it left off, exactly as the SmartNav
+does. AccessCam does nothing when the marker goes - the cursor stops where it
+is, and the first frame after reacquisition is deliberately a zero movement so
+it cannot jump - so there is nothing to report. Flagging it would have painted
+the tray red through every lunch break. The window says whether the marker is
+currently visible, and the tray tooltip mentions it, for anyone actually asking.
 
 Slow to complain and quick to forgive: a condition has to persist before it is
 shown, and clears the instant it goes away. An indicator that cries wolf gets
