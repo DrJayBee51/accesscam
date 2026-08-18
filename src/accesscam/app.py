@@ -265,9 +265,12 @@ def main() -> int:
     log.info("--- starting: %s", " ".join(sys.argv[1:]) or "(no arguments)")
     log.info("AccessCam %s running %s", __version__, sys.executable)
     if sys.platform == "win32":
-        from accesscam.mouse.windows import is_elevated
+        from accesscam.mouse.windows import has_uiaccess, is_elevated
 
-        log.info("elevated: %s", is_elevated())
+        # Both routes to a privileged window, logged separately. A bug report
+        # saying hovering does not work is unanswerable without knowing which
+        # of these was true, and they fail for entirely different reasons.
+        log.info("elevated: %s   uiaccess: %s", is_elevated(), has_uiaccess())
 
     if args.list_devices:
         return list_devices()

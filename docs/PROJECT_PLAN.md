@@ -499,6 +499,35 @@ impossible.
   is not running as administrator and does not need to be, so telling that user
   to restart elevated would be crying wolf.
 
+**Proven end to end on 2026-08-18, with a self-signed certificate.** Before
+spending anything on a real one, the whole mechanism was tested: a self-signed
+code-signing certificate, its root imported into `LocalMachine\Root`, the
+UIAccess build signed with it, and the result installed to
+`C:\Program Files\AccessCam-UIAccessTest\`. Launched **unelevated**, AccessCam
+logged:
+
+```
+elevated: False   uiaccess: True
+```
+
+So Windows does not require a *commercially* trusted certificate — only one the
+machine trusts. Three things follow:
+
+- **The mechanism works for AccessCam specifically**, not just in principle. No
+  admin rights, no UAC prompt, no scheduled task, and the M4.1 banner correctly
+  stays hidden because `can_reach_privileged_windows()` sees UIAccess.
+- **A certificate can be deferred without deferring the benefit on known
+  machines.** Signing with a self-signed certificate trusted on John's own PCs
+  would give him UIAccess today. It does nothing for anyone else - a stranger's
+  machine would not trust it, so a distributed build still needs a real
+  certificate - and it means trusting a self-signed root machine-wide, which is
+  a real if small risk: anyone holding that private key could sign anything the
+  machine would then trust.
+- **The remaining unknown is only reputation and reach**, not capability. What a
+  purchased certificate buys is SmartScreen (M4.8's original purpose) and the
+  ability for *other people* to get UIAccess. It is no longer a question of
+  whether the approach works.
+
 **Still to decide, and both cost something:**
 
 1. **The certificate itself.** Roughly $100–400/year for a standard OV
