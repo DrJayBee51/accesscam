@@ -358,6 +358,13 @@ it as you move, so precision and reach stop competing for one number:
 - **`accel_sharpness`** — how abruptly the gain climbs through the knee. Most
   setups never need to move it.
 
+**A config written before acceleration existed has it off**, and silently: the
+key is simply absent, absent keys take their defaults, and this default is the
+one that disables the curve. So an installation that predates this section keeps
+behaving exactly as it did until `accel_floor` is added by hand — which is the
+right way round for a tool someone relies on, but it does mean nothing announces
+the feature. Add the key to try it.
+
 The scale is taken from the speed of the whole 2D movement and applied to
 `h_gain` and `v_gain` together, so your existing calibration keeps its ratio and
 a diagonal is never bent. The curve only ever reduces gain, so a fast sweep still
