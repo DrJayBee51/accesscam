@@ -191,3 +191,39 @@ def test_confirming_marks_the_window_as_really_quitting(window, monkeypatch):
     window._confirm_quit()
 
     assert window.quit_requested
+
+
+# -- handing a camera back the way it was found ---------------------------
+
+
+def test_switching_away_restores_the_old_camera_to_auto_exposure(window, monkeypatch, fake_camera):
+    """The bug this guards, found 2026-08-20 on a real LifeCam.
+
+    AccessCam forces manual exposure, the *driver* stores it, and it outlives
+    the process - so a camera merely tried and abandoned stays black in every
+    other application, with nothing connecting that to an accessibility tool
+    installed hours earlier. The camera actually in use keeps manual exposure;
+    the one being dropped must not.
+    """
+    abandoned = window.engine.camera
+    monkeypatch.setattr(window, "_open_camera", lambda device: fake_camera())
+
+    window.camera_choice.addItem("Camera 3", 3)
+    window.camera_choice.setCurrentIndex(window.camera_choice.findData(3))
+    window._on_camera_chosen(window.camera_choice.currentIndex())
+
+    assert abandoned.closed_with_restore is True
+
+
+def test_the_camera_being_kept_is_not_reset(window, monkeypatch, fake_camera):
+    # Restoring auto-exposure on the camera AccessCam is about to track with
+    # would undo the very setting that makes marker tracking work.
+    replacement = fake_camera()
+    monkeypatch.setattr(window, "_open_camera", lambda device: replacement)
+
+    window.camera_choice.addItem("Camera 3", 3)
+    window.camera_choice.setCurrentIndex(window.camera_choice.findData(3))
+    window._on_camera_chosen(window.camera_choice.currentIndex())
+
+    assert window.engine.camera is replacement
+    assert replacement.closed_with_restore is None  # never closed at all

@@ -25,6 +25,7 @@ class FakeCamera:
         self.exposure = -9
         self.marker = marker
         self.exposures_set: list[int] = []
+        self.closed_with_restore: bool | None = None
 
     def read(self) -> np.ndarray:
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -39,8 +40,11 @@ class FakeCamera:
         self.exposures_set.append(value)
         return value
 
-    def close(self) -> None:
-        pass
+    def close(self, restore_auto_exposure: bool = False) -> None:
+        # Recorded rather than ignored: whether a discarded camera is handed
+        # back its auto-exposure is the difference between a working webcam and
+        # a black one in every other application, so it is worth asserting on.
+        self.closed_with_restore = restore_auto_exposure
 
 
 @pytest.fixture

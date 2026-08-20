@@ -88,3 +88,78 @@ def test_failed_attempts_do_not_leak_their_handle(captures):
     CameraSource().open(wait=30)
 
     assert [cap.released for cap in made] == [True, True, False]
+
+
+# -- handing the camera back ----------------------------------------------
+
+
+class _FakeCapture:
+    """Enough of cv2.VideoCapture to watch what close() does to it."""
+
+    def __init__(self):
+        self.released = False
+        self.sets: list[tuple[int, float]] = []
+
+    def set(self, prop, value):
+        self.sets.append((prop, value))
+        return True
+
+    def release(self):
+        self.released = True
+
+
+def _opened_camera():
+    from accesscam.camera import CameraSource
+
+    camera = CameraSource()
+    camera._cap = _FakeCapture()
+    return camera
+
+
+def test_close_leaves_exposure_alone_by_default():
+    # The camera being tracked with keeps its manual exposure; resetting it
+    # would undo the setting that makes marker tracking work at all.
+    import cv2
+
+    camera = _opened_camera()
+    cap = camera._cap
+
+    camera.close()
+
+    assert cap.released
+    assert not any(prop == cv2.CAP_PROP_AUTO_EXPOSURE for prop, _ in cap.sets)
+
+
+def test_close_can_restore_auto_exposure_for_a_discarded_camera():
+    import cv2
+
+    camera = _opened_camera()
+    cap = camera._cap
+
+    camera.close(restore_auto_exposure=True)
+
+    assert cap.released
+    assert any(prop == cv2.CAP_PROP_AUTO_EXPOSURE for prop, _ in cap.sets)
+
+
+def test_the_camera_is_released_even_if_restoring_fails():
+    # A driver that refuses leaves a dark webcam; one never released leaves a
+    # camera nothing on the machine can open. The second is worse.
+    camera = _opened_camera()
+    cap = camera._cap
+
+    def refuse(prop, value):
+        raise RuntimeError("driver said no")
+
+    cap.set = refuse
+
+    camera.close(restore_auto_exposure=True)
+
+    assert cap.released
+    assert camera._cap is None
+
+
+def test_closing_twice_is_harmless():
+    camera = _opened_camera()
+    camera.close(restore_auto_exposure=True)
+    camera.close(restore_auto_exposure=True)  # must not raise

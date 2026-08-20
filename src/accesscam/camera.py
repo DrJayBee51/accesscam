@@ -8,6 +8,7 @@ manual exposure stepping, and measures the frame rate actually delivered.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import time
 from collections import deque
@@ -140,10 +141,33 @@ class CameraSource:
         self.disable_auto_exposure()
         self.set_exposure(self._exposure)
 
-    def close(self) -> None:
-        if self._cap is not None:
-            self._cap.release()
-            self._cap = None
+    def close(self, restore_auto_exposure: bool = False) -> None:
+        """Release the camera, optionally handing it back the way it was found.
+
+        Manual exposure is stored by the *driver*, not by this process, so it
+        outlives AccessCam and every other application inherits it. That is
+        correct for the camera being tracked with - auto-exposure brightens the
+        scene until room objects rival the marker - and quietly destructive for
+        one AccessCam merely looked at and rejected: a laptop webcam left at
+        exposure -10 is black in the next video call, with nothing to connect
+        that to an accessibility tool installed an hour earlier.
+
+        So the caller says which case this is. Restoring is for cameras being
+        discarded; the one actually in use keeps its manual exposure, and would
+        only have it set again at the next launch anyway.
+        """
+        if self._cap is None:
+            return
+
+        if restore_auto_exposure:
+            # Best effort, and never at the cost of releasing the device: a
+            # driver that refuses is a dark webcam, but one that is never
+            # released is a camera nothing else can open at all.
+            with contextlib.suppress(Exception):
+                self.enable_auto_exposure()
+
+        self._cap.release()
+        self._cap = None
 
     def __enter__(self) -> Self:
         self.open()

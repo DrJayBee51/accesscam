@@ -874,7 +874,9 @@ class MainWindow(QMainWindow):
 
         was_running = self.engine.running
         self.engine.stop()
-        self.engine.camera.close()
+        # Being switched away from: hand it back its auto-exposure, or this
+        # camera stays dark for every other application on the machine.
+        self.engine.camera.close(restore_auto_exposure=True)
 
         camera = self._open_camera(device)
         if camera is None:
@@ -1215,7 +1217,10 @@ def launch(
         engine.stop()
         if listener is not None:
             listener.stop()
-        camera.close()
+        # See app.run: AccessCam is finished with this camera, so it should not
+        # leave it forced to a marker-tracking exposure that every other
+        # application will inherit.
+        camera.close(restore_auto_exposure=True)
         instance.release()
 
 

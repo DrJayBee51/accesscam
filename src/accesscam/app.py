@@ -166,7 +166,7 @@ def run(config: Config, dry_run: bool = False, wait_for_camera: float = 0.0) -> 
     except Exception as exc:  # noqa: BLE001 - any failure here must be visible
         print(f"error: could not register {config.hotkey!r}: {exc}", file=sys.stderr)
         print("Refusing to start without a way to stop the cursor.", file=sys.stderr)
-        camera.close()
+        camera.close(restore_auto_exposure=True)
         return 1
 
     print(f"pause hotkey: {config.hotkey.upper()}   (starts PAUSED - press it to take control)")
@@ -195,7 +195,11 @@ def run(config: Config, dry_run: bool = False, wait_for_camera: float = 0.0) -> 
     finally:
         engine.stop()
         listener.stop()
-        camera.close()
+        # Done with it: give the camera back its auto-exposure. The next launch
+        # sets manual again, so nothing is lost - but someone whose tracking
+        # camera is also their webcam gets a usable picture back the moment
+        # AccessCam stops, instead of a black one they cannot explain.
+        camera.close(restore_auto_exposure=True)
 
     return 0
 

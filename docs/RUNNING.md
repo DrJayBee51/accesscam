@@ -536,6 +536,23 @@ application or pick a different key.
 test it with `SendInput` will report failure regardless. Only a real press
 counts.
 
+**AccessCam forces manual exposure, and the camera driver remembers it.** That
+is deliberate — auto-exposure brightens the whole scene until room objects rival
+the marker, and tracking dies. It is stored by the *driver* rather than by
+AccessCam, so it outlives the process: a camera left at exposure −10 looks black
+to every other application until something sets it back.
+
+AccessCam now hands a camera back its auto-exposure whenever it is finished with
+one — on quit, and when you switch to a different camera — so only the camera
+actually being tracked with is left on manual. If you have an older AccessCam, or
+a camera that was darkened before this existed, this restores it:
+
+```powershell
+python -c "import cv2; c=cv2.VideoCapture(0, cv2.CAP_DSHOW); c.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75); c.release()"
+```
+
+Change the `0` to whichever device index is dark.
+
 **The camera must be on the machine running AccessCam.** If a monitor is shared
 between machines through a switch, the USB connection has to follow.
 
