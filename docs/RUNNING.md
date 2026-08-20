@@ -203,43 +203,56 @@ No region of interest is set here; the whole frame is searched.
 
 The daily driver, and where four days of full-day use surfaced the jitter
 problem the curve fixes. A region of interest is set here because a daylit
-office window rivalled the marker:
+office window rivalled the marker.
+
+Verbatim from that machine's `config.json` on 2026-08-16, after its first
+tuning session on the M3 build:
 
 ```json
 {
+  "accel_floor": 0.4,
+  "accel_knee": 25.0,
+  "accel_sharpness": 3.5,
+  "backend": "dshow",
+  "beta": 0.3,
+  "clutch": 0.0,
+  "d_cutoff": 1.0,
+  "dead_zone": 0.0,
+  "device": 1,
+  "exposure": -9,
+  "fps": 30,
+  "h_gain": 105.0,
+  "height": 480,
+  "hotkey": "f9",
+  "invert_x": true,
+  "invert_y": false,
+  "max_area": 5000.0,
+  "max_jump": 120.0,
+  "max_step": 2500.0,
+  "min_area": 4.0,
+  "min_circularity": 0.5,
+  "min_cutoff": 0.3,
+  "roi_h": 233,
+  "roi_w": 268,
   "roi_x": 257,
   "roi_y": 237,
-  "roi_w": 268,
-  "roi_h": 233
+  "start_minimized": false,
+  "threshold": 200,
+  "v_gain": 80.0,
+  "width": 640
 }
 ```
 
-<!-- TODO: gains, exposure, threshold and device for this machine are not
-     recorded yet. Copy them from its config.json rather than assuming the
-     development PC's carry over - the ROI alone changes how much of the frame
-     the head crosses, and the rooms are lit differently. -->
+**The curve bought room for faster gains here too.** 85/60 before it, 105/80
+after — the same trade the development PC made, on a different screen count and
+a different mount distance, which is the open question from the M2 notes
+answered. The floor settled slightly higher (0.4 against 0.35) and the knee
+matches at 25.
 
-Known in use there, from M2: `h_gain` 100, `v_gain` 70, `min_cutoff` 0.15,
-`beta` 0.4, `max_step` 2500. **Paste that machine's whole `config.json` in here
-on the next visit** — the TODO above has outlived two sessions, and it is thirty
-seconds at that desk against guesswork from this one.
-
-#### Coming from the M2 build
-
-That machine last pulled on 2026-08-10 and is a long way back. Three things
-change on the first run after an update:
-
-- **`--ui` is what opens the window.** Without it AccessCam still runs exactly
-  as it did, headless with F9. Nothing about the old command breaks.
-- **Acceleration is off in a config written before it existed**, since
-  `accel_floor` defaults to 1.0 and a missing key takes its default. To try it,
-  set `accel_floor` to 0.35 and leave the gains alone at first. On the
-  development PC the curve is what made room to raise them; whether that
-  transfers to three screens and a different mount distance is exactly what a
-  workday answers.
-- **The window is live** — the acceleration floor, the gains and the region can
-  all be dragged while the cursor keeps working, so this no longer costs a
-  restart per guess.
+`min_cutoff` is 0.3 rather than the development PC's 0.15. Slow movement is
+where the difference shows: below about 0.3 the resting jitter stops improving
+while lag keeps growing, and on this machine that lag was noticeable when
+placing the pointer on an on-screen keyboard key.
 
 ### Notes that apply to both
 
@@ -344,6 +357,13 @@ it as you move, so precision and reach stop competing for one number:
   halfway back. Below it you are positioning; above it you are travelling.
 - **`accel_sharpness`** — how abruptly the gain climbs through the knee. Most
   setups never need to move it.
+
+**A config written before acceleration existed has it off**, and silently: the
+key is simply absent, absent keys take their defaults, and this default is the
+one that disables the curve. So an installation that predates this section keeps
+behaving exactly as it did until `accel_floor` is added by hand — which is the
+right way round for a tool someone relies on, but it does mean nothing announces
+the feature. Add the key to try it.
 
 The scale is taken from the speed of the whole 2D movement and applied to
 `h_gain` and `v_gain` together, so your existing calibration keeps its ratio and
