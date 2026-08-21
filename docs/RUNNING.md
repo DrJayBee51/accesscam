@@ -520,6 +520,65 @@ turning on before chasing a scheduling problem (Administrator):
 wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
 ```
 
+## Sharing the cursor with a mouse
+
+When something else moves the cursor — someone picking up the real mouse to
+show you something — head tracking stands aside and picks up from wherever they
+left it. On by default:
+
+```json
+{
+  "yield_to_mouse": true,
+  "yield_delay": 0.0
+}
+```
+
+- **`yield_to_mouse`** — whether to give way at all. Off restores the old
+  behaviour, where both devices drive the cursor at once and the head tracker
+  wins by sheer frame rate, which makes the mouse feel broken rather than the
+  tracker feel polite.
+- **`yield_delay`** — how long to stay out of the way *after* the other device
+  stops, in seconds, 0 to 1. Zero hands control back on the very next frame,
+  so the pause lasts exactly as long as somebody is actually moving the mouse.
+  Raise it if the cursor snatches control back while someone is using the mouse
+  in short bursts.
+
+It notices any device that moves the cursor, not just a mouse — detection is by
+watching where the cursor actually is, not by inspecting mouse events, so a
+QuadStick or any other pointing device counts too. AccessCam's own movement
+never does.
+
+## Changing the pause hotkey
+
+*Application* tab, **Pause hotkey**. F1 through F24.
+
+Only function keys are offered, and that is not a simplification. A global
+hotkey is swallowed system-wide while AccessCam runs, so claiming a letter would
+remove it from all typing everywhere; and the key has to work as a single press,
+because the fallback input when the cursor is unusable cannot readily produce
+chords.
+
+**F13–F24 are worth knowing about.** Almost no keyboard has them, which makes
+them ideal here: nothing else is likely to be holding one, and an assistive
+device can be mapped to send it.
+
+If another program already holds the key you pick, the change is refused and the
+previous key stays registered — AccessCam says which one is still in use rather
+than leaving you with no way to park the cursor. A chord such as `ctrl+alt+p`
+is still legal in the config file by hand; the dropdown leaves it alone and says
+where the value came from.
+
+## If the camera is unplugged
+
+Nothing to do — AccessCam notices frames have stopped, closes the dead handle
+and reopens the camera when it comes back, which takes a second or two. It looks
+for the configured index first and then the others, because USB does not promise
+the same number twice and a camera that returns as device 2 while the config says
+1 would otherwise look like a hardware fault.
+
+The tray icon shows the trouble state while frames are missing, so a camera that
+is genuinely gone is visible rather than silent.
+
 ## Known gotchas
 
 **F9 is claimed globally while AccessCam runs.** Nothing else on the system

@@ -258,17 +258,20 @@ Still outstanding:
 
 - **The relative/absolute toggle.** Lowest value of what is left — absolute is
   best-effort and needs a screen-selection decision before a toggle means much.
-- **Eleven settings unreachable** from the window: `backend`, `width`,
+- **Ten settings unreachable** from the window: `backend`, `width`,
   `height`, `fps`, `max_jump`, `d_cutoff`, `invert_x`, `invert_y`, `dead_zone`,
-  `max_step`, `hotkey`. `invert_x`/`invert_y` are two cheap checkboxes and
-  mount-dependent; the rest are advanced or, in `hotkey`'s case, deferred to M5.
+  `max_step`. `invert_x`/`invert_y` are two cheap checkboxes and
+  mount-dependent; the rest are advanced. **`hotkey` came off this list on
+  2026-08-21** - it is a dropdown on the Application tab, pulled forward from
+  M5 because editing JSON to change the one key that parks the cursor was a
+  poor answer for the people this ships to.
 - **Single-instance detection.** A second instance cannot open the camera and,
   launched by the logon task under `pythonw` with no console, dies without
   saying anything. Harmless at logon, but it needs handling before M4 ships to
   anyone else — either refuse politely or hand focus to the running instance.
 
 **The exit criterion below needs rewording before it can be met.** It asks for
-every setting to be adjustable, but `hotkey` is deferred to M5 and the camera
+every setting to be adjustable, but the camera
 settings cannot be live at all: changing `device`, `width`, `height` or `fps`
 means closing and reopening the capture, which `Engine.apply` deliberately
 refuses. "Every setting that can be changed without reopening the camera" is
@@ -556,9 +559,9 @@ exe, a camera in a box, and a piece of reflective tape.
 
 #### Known gaps that M4 consciously ships with
 
-- **The hotkey can only be changed by editing JSON** (`hotkey` is M5). A user
-  whose F9 is already claimed has to hand-edit a config file, which is a poor
-  answer but a known one — write it in the guide rather than pretend.
+- ~~The hotkey can only be changed by editing JSON.~~ ✅ Done 2026-08-21:
+  a dropdown of F1–F24 on the Application tab, which falls back to the previous
+  key if the new one is already held by another program.
 - **Eleven settings remain unreachable from the window** (M3 lists them).
 - **Relative mode only**; absolute still needs a screen-selection decision.
 
@@ -577,7 +580,7 @@ dot instructions, and the bezel range published alongside the software.
 
 ### M5 — v2 features
 Dwell clicking (dwell time, click type, visual countdown), calibration wizard,
-configurable hotkeys, optional gravity/precision mode near targets. (Basic
+optional gravity/precision mode near targets. (Configurable hotkeys were pulled forward to M3 on 2026-08-21.) (Basic
 multi-monitor handling moved up to M2 — see there. Note that the M2
 acceleration curve may have already covered most of what a precision mode was
 for, so re-examine that item before building it.)
