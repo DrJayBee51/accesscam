@@ -227,3 +227,76 @@ def test_the_camera_being_kept_is_not_reset(window, monkeypatch, fake_camera):
 
     assert window.engine.camera is replacement
     assert replacement.closed_with_restore is None  # never closed at all
+
+
+# -- the pause hotkey ------------------------------------------------------
+
+
+class _Binding:
+    """Stands in for the live registration, refusing keys on demand."""
+
+    def __init__(self, refuse=()):
+        self.refuse = set(refuse)
+        self.label = "f9"
+        self.bound: list[str] = []
+
+    def bind(self, spec):
+        from accesscam.hotkeys.binding import BindResult
+
+        if spec in self.refuse:
+            return BindResult(False, f"{spec.upper()} is held by another program.")
+        self.label = spec
+        self.bound.append(spec)
+        return BindResult(True)
+
+
+def test_the_hotkey_list_offers_only_function_keys(window):
+    keys = [window.hotkey_choice.itemData(i) for i in range(window.hotkey_choice.count())]
+
+    assert keys[0] == "f1"
+    assert "f9" in keys
+    # F13-F24 are worth offering precisely because nothing else claims them.
+    assert "f24" in keys
+    assert all(k.startswith("f") and k[1:].isdigit() for k in keys)
+
+
+def test_it_opens_on_the_configured_key(window):
+    assert window.hotkey_choice.currentData() == window.config.hotkey
+
+
+def test_choosing_a_key_rebinds_and_records_it(window):
+    window.hotkey = _Binding()
+
+    window.hotkey_choice.setCurrentIndex(window.hotkey_choice.findData("f8"))
+    window._on_hotkey_chosen(window.hotkey_choice.currentIndex())
+
+    assert window.hotkey.bound == ["f8"]
+    assert window.config.hotkey == "f8"
+
+
+def test_a_key_another_program_holds_is_refused_and_the_old_one_kept(window, monkeypatch):
+    # The property that matters: a change that cannot take effect must leave a
+    # working hotkey behind, not a broken selection.
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warned.append(a[2]))
+    window.config.hotkey = "f9"
+    window.hotkey = _Binding(refuse={"f8"})
+
+    window.hotkey_choice.setCurrentIndex(window.hotkey_choice.findData("f8"))
+    window._on_hotkey_chosen(window.hotkey_choice.currentIndex())
+
+    assert window.config.hotkey == "f9"
+    assert window.hotkey_choice.currentData() == "f9", "the dropdown must not lie"
+    assert warned and "F8" in warned[0]
+
+
+def test_a_hand_written_chord_is_not_silently_replaced(window):
+    # A config edited by hand can hold ctrl+alt+p, which is legal and not in
+    # the list. Snapping the dropdown to something else would rebind the key
+    # the moment the window opened.
+    window.config.hotkey = "ctrl+alt+p"
+    window._select_hotkey("ctrl+alt+p")
+    window._refresh_hotkey_note()
+
+    assert "CTRL+ALT+P" in window.hotkey_note.text()
+    assert "config file" in window.hotkey_note.text()

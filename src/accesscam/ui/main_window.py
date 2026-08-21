@@ -229,6 +229,7 @@ class MainWindow(QMainWindow):
         config: Config,
         config_file: Path | None = None,
         parent: QWidget | None = None,
+        hotkey=None,
     ) -> None:
         super().__init__(parent)
         self.engine = engine
@@ -245,6 +246,9 @@ class MainWindow(QMainWindow):
         self.hides_to_tray = False
         self.quit_requested = False
         self.tray = None
+        # The live pause-hotkey registration, when there is one. None in the
+        # tests and anywhere the window is built without a real listener.
+        self.hotkey = hotkey
         # Judged rather than measured: the engine says what happened, this
         # decides when a run of readings is worth showing someone.
         self.health = Health()
@@ -672,6 +676,42 @@ class MainWindow(QMainWindow):
         self.camera_note.setObjectName("tunerHelp")
         self.camera_note.setWordWrap(True)
 
+        self.hotkey_choice = QComboBox()
+        self.hotkey_choice.setMinimumWidth(140)
+        for number in range(1, 25):
+            self.hotkey_choice.addItem(f"F{number}", f"f{number}")
+        self._select_hotkey(self.config.hotkey)
+        self.hotkey_choice.activated.connect(self._on_hotkey_chosen)
+
+        hotkey_row = QHBoxLayout()
+        hotkey_row.setSpacing(10)
+        hotkey_row.addWidget(QLabel("Pause hotkey"))
+        hotkey_row.addWidget(self.hotkey_choice)
+        hotkey_row.addWidget(
+            HelpButton(
+                "The key that parks and unparks the cursor. It works from any "
+                "application, which is the point — the cursor has to be "
+                "stoppable when it is misbehaving.\n\n"
+                "Only function keys are offered. A global hotkey is swallowed "
+                "system-wide while AccessCam runs, so claiming a letter would "
+                "remove it from all typing everywhere; and the key has to be "
+                "reachable as a single press, because the fallback input when "
+                "the cursor is unusable cannot easily produce chords.\n\n"
+                "F13-F24 exist on almost no keyboard, which makes them useful "
+                "here: nothing else is likely to be holding them, and an "
+                "assistive device can be mapped to send one.\n\n"
+                "If another program already holds the key, the change is "
+                "refused and the previous one stays registered.",
+                "the pause hotkey",
+            )
+        )
+        hotkey_row.addStretch(1)
+
+        self.hotkey_note = QLabel()
+        self.hotkey_note.setObjectName("tunerHelp")
+        self.hotkey_note.setWordWrap(True)
+        self._refresh_hotkey_note()
+
         self.start_minimised_box = QCheckBox("Start minimised to the tray")
         self.start_minimised_box.setChecked(self.config.start_minimized)
         self.start_minimised_box.toggled.connect(self._on_start_minimised)
@@ -721,6 +761,8 @@ class MainWindow(QMainWindow):
             [
                 heading("Camera"),
                 _rows(camera_row, self.camera_note),
+                heading("Control"),
+                _rows(hotkey_row, self.hotkey_note),
                 heading("Starting up"),
                 self.start_minimised_box,
                 _rows(logon_row, self.logon_note),
@@ -815,6 +857,57 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Searching the whole frame again", 4000)
 
     # -- application settings ----------------------------------------------
+
+    def _select_hotkey(self, spec: str) -> None:
+        """Point the dropdown at `spec`, or leave it where it is if unlisted.
+
+        A config edited by hand can hold a chord like `ctrl+alt+p`, which is
+        legal and not in this list. Silently snapping the dropdown to something
+        else would then rebind the key the moment the window opened.
+        """
+        index = self.hotkey_choice.findData(spec)
+        if index >= 0:
+            self.hotkey_choice.setCurrentIndex(index)
+
+    def _refresh_hotkey_note(self) -> None:
+        current = self.config.hotkey
+        listed = self.hotkey_choice.findData(current) >= 0
+        if listed:
+            self.hotkey_note.setText(
+                f"{current.upper()} parks and unparks the cursor, from any application."
+            )
+        else:
+            # Set by hand to something outside the list; say so rather than
+            # letting the dropdown imply otherwise.
+            self.hotkey_note.setText(
+                f"Currently {current.upper()}, set in the config file. Choosing from this "
+                "list will replace it."
+            )
+
+    def _on_hotkey_chosen(self, _row: int) -> None:
+        spec = self.hotkey_choice.currentData()
+        if spec is None or spec == self.config.hotkey:
+            return
+
+        if self.hotkey is None:
+            # No live binding to change - the window was built without one,
+            # which is the headless and test case.
+            self.config.hotkey = spec
+            self._refresh_hotkey_note()
+            return
+
+        result = self.hotkey.bind(spec)
+        if not result.ok:
+            self._select_hotkey(self.config.hotkey)
+            self._refresh_hotkey_note()
+            QMessageBox.warning(self, "Could not change the pause hotkey", result.message)
+            return
+
+        self.config.hotkey = spec
+        self._refresh_hotkey_note()
+        self.statusBar().showMessage(
+            f"Pause hotkey is now {spec.upper()}. Save settings to keep it.", 6000
+        )
 
     def _rescan_cameras(self) -> None:
         """Enumerate cameras, which means letting go of the one in use.
@@ -1129,7 +1222,7 @@ def launch(
     """Open the settings window with a live engine behind it."""
     from accesscam.app import build_camera
     from accesscam.camera import CameraError
-    from accesscam.hotkeys import create_listener, parse_hotkey
+    from accesscam.hotkeys.binding import HotkeyBinding
     from accesscam.mouse import CursorController, create_backend
     from accesscam.mouse.fake import RecordingMouse
     from accesscam.ui.first_run import choose_camera
@@ -1181,7 +1274,11 @@ def launch(
             return 1
 
     engine = Engine(config, camera, cursor)
-    window = MainWindow(engine, config, config_file)
+    # Built before the window so the hotkey dropdown has something live to
+    # change; registering it comes after, once there is somewhere to report a
+    # failure that is not a console nobody is watching.
+    hotkey = HotkeyBinding(engine.pause.toggle)
+    window = MainWindow(engine, config, config_file, hotkey=hotkey)
     log.info("window built")
 
     reveal_filter = _RevealFilter(window.reveal)
@@ -1196,17 +1293,11 @@ def launch(
     if not config.start_minimized:
         window.show()
 
-    listener = None
-    try:
-        listener = create_listener(parse_hotkey(config.hotkey), engine.pause.toggle)
-        listener.start()
-        log.info("pause hotkey %r registered", config.hotkey)
-    except Exception as exc:  # noqa: BLE001 - visible, but not fatal with a window
-        log.warning("hotkey %r unavailable: %s", config.hotkey, exc)
-        window.statusBar().showMessage(f"Hotkey {config.hotkey!r} unavailable: {exc}")
-        window.health.note_hotkey_failure(
-            f"{config.hotkey.upper()} could not be registered - another program may hold it."
-        )
+    bound = hotkey.bind(config.hotkey)
+    if not bound.ok:
+        window.statusBar().showMessage(bound.message)
+        window.health.note_hotkey_failure(bound.message)
+    window._refresh_hotkey_note()
 
     engine.start()
     log.info("running")
@@ -1215,8 +1306,7 @@ def launch(
     finally:
         log.info("shutting down")
         engine.stop()
-        if listener is not None:
-            listener.stop()
+        hotkey.stop()
         # See app.run: AccessCam is finished with this camera, so it should not
         # leave it forced to a marker-tracking exposure that every other
         # application will inherit.
