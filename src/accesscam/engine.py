@@ -18,20 +18,36 @@ a front end that cannot suppress output is not really a front end.
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import cv2
 import numpy as np
 
-from accesscam.camera import CameraSource
+from accesscam.camera import CameraError, CameraSource
 from accesscam.config import Config
 from accesscam.hotkeys import PauseController
+from accesscam.log import log
 from accesscam.mapper import MapperSettings, RelativeMapper
 from accesscam.mouse import CursorController
 from accesscam.smoothing import PointSmoother, SmoothingSettings
 from accesscam.tracker import DotTracker
+
+# How long frames must stop arriving before the camera is treated as gone
+# rather than merely dropping frames. Long enough to outlast a stall, short
+# enough that replugging feels like it just works.
+RECONNECT_AFTER = 2.0
+
+# Gap between reconnection attempts. Opening an absent device costs the better
+# part of a second under DirectShow, so this paces slow calls rather than
+# spinning.
+RECONNECT_INTERVAL = 1.0
+
+# How far to look when the camera does not come back on its own index. Matches
+# what `probe_devices` scans.
+MAX_DEVICE_INDEX = 8
 
 
 @dataclass(frozen=True)
@@ -267,11 +283,93 @@ class Engine:
             self._frame = frame
 
     def _loop(self) -> None:
+        starved_since: float | None = None
+        next_attempt = 0.0
+
         while not self._stop.is_set():
             frame = self.camera.read()
-            if frame is None:
-                # A dropped frame is normal; a dead camera is not. Yield rather
-                # than spinning a core while finding out which one this is.
-                time.sleep(0.001)
+            if frame is not None:
+                starved_since = None
+                self.step(frame)
                 continue
-            self.step(frame)
+
+            # A dropped frame is normal; a dead camera is not, and the two look
+            # identical from here. Time tells them apart: a driver drops the odd
+            # frame, it does not drop every frame for seconds on end.
+            now = time.monotonic()
+            if starved_since is None:
+                starved_since = now
+            elif now - starved_since >= RECONNECT_AFTER and now >= next_attempt:
+                if self._reconnect():
+                    starved_since = None
+                else:
+                    next_attempt = now + RECONNECT_INTERVAL
+
+            # Yield rather than spinning a core while finding out which it is.
+            time.sleep(0.001)
+
+    def _reconnect(self) -> bool:
+        """Try to reopen the camera after it stopped delivering frames.
+
+        Unplugging is routine rather than exceptional - one camera moving
+        between two machines - so this has to be automatic and quiet. Without
+        it the loop spun on a dead handle forever: the preview froze black, and
+        replugging the camera changed nothing because nothing ever reopened it.
+
+        The device index is re-derived rather than trusted. USB does not promise
+        the same number twice, and a camera that comes back as device 2 when the
+        config says 1 is exactly the case a naive reopen fails at while looking
+        like a hardware fault.
+        """
+        log.info("camera %s stopped delivering - reconnecting", self.camera.settings.device)
+
+        # Let go of the dead handle first, or the reopen contends with it. No
+        # exposure restoring here: this camera is not being abandoned, and the
+        # driver would not hear it anyway.
+        with contextlib.suppress(Exception):
+            self.camera.close()
+
+        for device in self._reconnect_candidates():
+            candidate = CameraSource(replace(self.camera.settings, device=device))
+            try:
+                candidate.open()
+                candidate.set_exposure(self.camera.exposure)
+            except CameraError:
+                continue
+
+            if candidate.read() is None:
+                # Opened but silent - a stale handle for a device that has not
+                # finished re-enumerating. Not a reconnection.
+                candidate.close()
+                continue
+
+            log.info("camera reconnected on device %s", device)
+            self._adopt(candidate)
+            return True
+
+        return False
+
+    def _reconnect_candidates(self):
+        """The configured index first, then the others it may have moved to."""
+        wanted = self.camera.settings.device
+        return [wanted, *(d for d in range(MAX_DEVICE_INDEX) if d != wanted)]
+
+    def _adopt(self, camera: CameraSource) -> None:
+        """Swap in a reconnected camera from inside the running loop.
+
+        `use_camera` refuses while running, and rightly - it exists for a user
+        choosing a different camera, where the loop must not be reading through
+        the swap. Here the loop *is* the caller and is between reads, so the
+        same work is done directly.
+        """
+        self.camera = camera
+        self.tracker.reset()
+        self.smoother.reset()
+        # The marker position described a frame from before the disconnection.
+        # Carried over it would deliver one enormous displacement, throwing the
+        # cursor across the desktop the instant the camera came back.
+        self.mapper.reset()
+        with self._lock:
+            self._frame = None
+            self._position = None
+            self._tracking = False
