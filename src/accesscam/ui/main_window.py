@@ -712,6 +712,47 @@ class MainWindow(QMainWindow):
         self.hotkey_note.setWordWrap(True)
         self._refresh_hotkey_note()
 
+        self.yield_box = QCheckBox("Give way to the mouse")
+        self.yield_box.setChecked(self.config.yield_to_mouse)
+        self.yield_box.toggled.connect(self._on_yield_toggled)
+
+        self.yield_delay = self._tuner(
+            "Hold off after it stops",
+            "yield_delay",
+            0.0,
+            1.0,
+            step=0.05,
+            decimals=2,
+            suffix=" s",
+            help_text=(
+                "How long to keep out of the way after the other device stops "
+                "moving, in seconds.\n\n"
+                "Zero hands control back on the very next frame, which is "
+                "usually what you want - the pause lasts only as long as "
+                "somebody is actually moving the mouse. Raise it if the cursor "
+                "feels like it snatches control back too eagerly while someone "
+                "is still using the mouse in short bursts."
+            ),
+        )
+
+        yield_row = QHBoxLayout()
+        yield_row.setSpacing(8)
+        yield_row.addWidget(self.yield_box)
+        yield_row.addWidget(
+            HelpButton(
+                "Stops AccessCam fighting another pointing device. When "
+                "something else moves the cursor - someone taking the real "
+                "mouse to show you something - head tracking stands aside and "
+                "picks up from wherever they left it.\n\n"
+                "Without this, both devices drive the same cursor at once and "
+                "the head tracker wins by sheer frame rate, which makes the "
+                "mouse feel broken rather than the tracker feel polite.\n\n"
+                "It notices any device that moves the cursor, not just a mouse.",
+                "giving way to the mouse",
+            )
+        )
+        yield_row.addStretch(1)
+
         self.start_minimised_box = QCheckBox("Start minimised to the tray")
         self.start_minimised_box.setChecked(self.config.start_minimized)
         self.start_minimised_box.toggled.connect(self._on_start_minimised)
@@ -763,6 +804,8 @@ class MainWindow(QMainWindow):
                 _rows(camera_row, self.camera_note),
                 heading("Control"),
                 _rows(hotkey_row, self.hotkey_note),
+                _rows(yield_row),
+                self.yield_delay,
                 heading("Starting up"),
                 self.start_minimised_box,
                 _rows(logon_row, self.logon_note),
@@ -857,6 +900,11 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Searching the whole frame again", 4000)
 
     # -- application settings ----------------------------------------------
+
+    def _on_yield_toggled(self, checked: bool) -> None:
+        self.config.yield_to_mouse = checked
+        self.yield_delay.setEnabled(checked)
+        self.engine.apply(self.config)
 
     def _select_hotkey(self, spec: str) -> None:
         """Point the dropdown at `spec`, or leave it where it is if unlisted.

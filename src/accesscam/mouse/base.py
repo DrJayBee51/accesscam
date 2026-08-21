@@ -38,6 +38,11 @@ DEFAULT_CLUTCH = 0.0
 # when MOUSEEVENTF_VIRTUALDESK is set.
 ABSOLUTE_RANGE = 65535
 
+# How far the cursor may differ from where AccessCam last saw it before that
+# counts as somebody else having moved it. Rounding and DPI scaling can shift a
+# read-back by a pixel, and a false positive stutters tracking for no reason.
+FOREIGN_MOVE_TOLERANCE = 2
+
 
 @dataclass(frozen=True)
 class ScreenBounds:
@@ -130,6 +135,9 @@ class CursorController:
         # over-travel removed.
         self._cursor = (0.0, 0.0)
         self._last_sent: tuple[int, int] | None = None
+        # Where the cursor was last seen to be, as opposed to where it was
+        # last sent. The two differ whenever something else moves it.
+        self._observed: tuple[int, int] | None = None
         self.sync()
 
     @property
@@ -174,6 +182,41 @@ class CursorController:
         self._x, self._y = self._bounds.clamp(float(x), float(y))
         self._cursor = (self._x, self._y)
         self._last_sent = (round(self._x), round(self._y))
+        self._observed = (x, y)
+
+    def _observe(self) -> None:
+        """Remember where the cursor actually ended up after we moved it.
+
+        Read back rather than assumed: Windows pins the cursor to a screen edge
+        and clamps into regions no monitor covers, so where it lands is not
+        always where it was sent. Comparing against the *observed* position is
+        what makes foreign movement detectable without every clamp looking like
+        somebody else's mouse.
+        """
+        try:
+            self._observed = self._backend.position()
+        except OSError:
+            self._observed = None
+
+    def foreign_movement(self, tolerance: int = FOREIGN_MOVE_TOLERANCE) -> bool:
+        """Whether something other than AccessCam has moved the cursor.
+
+        No hook and no injected-event flag: the cursor's own position answers
+        it. AccessCam knows where it last saw the cursor, so anything else that
+        moved it - a real mouse, a QuadStick, another program - shows up as a
+        discrepancy, and AccessCam's own movement never does.
+
+        The tolerance exists because rounding and DPI scaling can shift the
+        read-back by a pixel, and a false positive here means head tracking
+        stutters for no reason.
+        """
+        if self._observed is None:
+            return False
+        try:
+            x, y = self._backend.position()
+        except OSError:
+            return False
+        return abs(x - self._observed[0]) > tolerance or abs(y - self._observed[1]) > tolerance
 
     def _monitor_at(self, x: float, y: float) -> ScreenBounds | None:
         for monitor in self._monitors:
@@ -238,3 +281,4 @@ class CursorController:
         if target != self._last_sent:
             self._backend.move_to(*target)
             self._last_sent = target
+        self._observe()

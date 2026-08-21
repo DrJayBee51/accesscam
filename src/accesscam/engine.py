@@ -120,6 +120,10 @@ class Engine:
             )
         )
 
+        self.yield_to_mouse = config.yield_to_mouse
+        self.yield_delay = config.yield_delay
+        self._yield_until = 0.0
+
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -244,6 +248,8 @@ class Engine:
             mapping.accel_sharpness = config.accel_sharpness
 
             self.cursor.clutch = config.clutch
+            self.yield_to_mouse = config.yield_to_mouse
+            self.yield_delay = config.yield_delay
 
         if config.exposure != self.camera.exposure:
             self.camera.set_exposure(config.exposure)
@@ -268,10 +274,11 @@ class Engine:
 
         smoothed = self.smoother.update(position)
 
-        if self.pause.active:
+        if self.pause.active and not self._yielding():
             self.cursor.move_by(*self.mapper.update(smoothed))
         else:
-            # Keep the mapper from carrying a delta across the pause.
+            # Keep the mapper from carrying a delta across the pause, or across
+            # someone else driving the cursor.
             self.mapper.reset()
 
         with self._lock:
@@ -307,6 +314,41 @@ class Engine:
 
             # Yield rather than spinning a core while finding out which it is.
             time.sleep(0.001)
+
+    def _yielding(self) -> bool:
+        """Whether to stand aside because something else is moving the cursor.
+
+        The case this exists for: someone takes the real mouse to show you
+        something. Two devices driving one cursor fight, and the head tracker
+        wins by sheer frame rate, which makes the mouse feel broken.
+
+        Detection is by position rather than by hooking the input stream -
+        AccessCam knows where it last saw the cursor, so anything else that
+        moved it shows up as a discrepancy and its own movement never does.
+        That also covers devices a mouse hook would miss or misattribute,
+        including the QuadStick.
+
+        `yield_delay` is hold-off *after* the other device stops. A literal
+        zero-second delay would never fire - mouse events arrive as a stream
+        while a frame comes every 33ms - so the base behaviour is to yield for
+        the frame in which foreign movement is seen, and the delay extends that.
+        """
+        if not self.yield_to_mouse:
+            return False
+
+        now = time.monotonic()
+        if self.cursor.foreign_movement():
+            self._yield_until = now + max(self.yield_delay, 0.0)
+            # Adopt where the other device left the cursor, so resuming
+            # continues from there instead of snapping back.
+            self.cursor.sync()
+            return True
+
+        if now < self._yield_until:
+            self.cursor.sync()
+            return True
+
+        return False
 
     def _reconnect(self) -> bool:
         """Try to reopen the camera after it stopped delivering frames.

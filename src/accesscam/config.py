@@ -113,6 +113,14 @@ class Config:
     # head can return past centre. 0 disables it.
     clutch: float = DEFAULT_CLUTCH
 
+    # Yield to another pointing device. On by default, unlike the clutch and
+    # the acceleration curve: this one restores an expectation rather than
+    # adding a behaviour, since two things moving one cursor at once is a
+    # fight nobody asked for. `yield_delay` is extra hold-off *after* the other
+    # device stops, in seconds; 0 resumes on the next frame.
+    yield_to_mouse: bool = True
+    yield_delay: float = 0.0
+
     # Control
     hotkey: str = DEFAULT_HOTKEY
     # Open straight to the tray with no window. Off by default: someone who has
