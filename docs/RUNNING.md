@@ -544,9 +544,13 @@ left it. On by default:
   in short bursts.
 
 It notices any device that moves the cursor, not just a mouse — detection is by
-watching where the cursor actually is, not by inspecting mouse events, so a
-QuadStick or any other pointing device counts too. AccessCam's own movement
-never does.
+watching where the cursor actually is, not by inspecting mouse events. AccessCam's
+own movement never counts, which is the part that makes this workable at all,
+since AccessCam is itself moving the cursor thirty times a second.
+
+A QuadStick counts only in the modes where it drives the cursor. The mode used
+alongside head tracking sends keystrokes rather than pointer movement, so it
+does not trigger this.
 
 ## Changing the pause hotkey
 

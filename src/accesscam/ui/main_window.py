@@ -484,10 +484,10 @@ class MainWindow(QMainWindow):
         self._camera_controls.setFixedWidth(right)
         self._movement_controls.setFixedWidth(right)
 
-        # The Application tab has one card rather than two, so it spans the
-        # width both of the others occupy. Left at its natural width it clipped
-        # the camera row and left most of the tab empty beside it.
-        self._application_controls.setFixedWidth(left + right + TAB_SPACING)
+        # The Application tab's two cards take the same widths as the other
+        # tabs', so switching tabs does not shift everything sideways.
+        self._application_hardware.setFixedWidth(left)
+        self._application_lifecycle.setFixedWidth(right)
 
     def _lock_size(self) -> None:
         """Fix the window at the size its content needs.
@@ -648,18 +648,28 @@ class MainWindow(QMainWindow):
         it is not a tracking-quality setting, it is which hardware to use.
         """
         self.camera_choice = QComboBox()
-        self.camera_choice.setMinimumWidth(320)
+        # Narrow on purpose. This card is now one of two rather than the full
+        # width of the window, and a wide minimum here forced the whole column
+        # wider than its viewport - which clipped the right edge off every row
+        # below it, not just this one.
+        self.camera_choice.setMinimumWidth(160)
         self.camera_choice.addItem(f"Camera {self.config.device} (in use)", self.config.device)
         self.camera_choice.activated.connect(self._on_camera_chosen)
 
         rescan = QPushButton("Scan for cameras")
         rescan.clicked.connect(self._rescan_cameras)
 
-        camera_row = QHBoxLayout()
-        camera_row.setSpacing(10)
-        camera_row.addWidget(self.camera_choice, 1)
-        camera_row.addWidget(rescan)
-        camera_row.addWidget(
+        # The dropdown gets its own row and the button sits under it: side by
+        # side they do not fit a half-width card without squeezing the names of
+        # the cameras down to nothing.
+        camera_row = QVBoxLayout()
+        camera_row.setSpacing(8)
+        camera_row.addWidget(self.camera_choice)
+
+        scan_row = QHBoxLayout()
+        scan_row.setSpacing(8)
+        scan_row.addWidget(rescan)
+        scan_row.addWidget(
             HelpButton(
                 "Which camera to track with. The index differs from machine to "
                 "machine, and a laptop's built-in webcam frequently takes 0.\n\n"
@@ -671,6 +681,8 @@ class MainWindow(QMainWindow):
                 "the camera",
             )
         )
+        scan_row.addStretch(1)
+        camera_row.addLayout(scan_row)
 
         self.camera_note = QLabel("Scan to see what else is connected.")
         self.camera_note.setObjectName("tunerHelp")
@@ -798,7 +810,11 @@ class MainWindow(QMainWindow):
         quit_row.addWidget(quit_button)
         quit_row.addStretch(1)
 
-        controls = self._scrolling(
+        # Two cards, like the other tabs, split by the question each answers:
+        # what AccessCam uses and how you drive it, against when it runs. One
+        # wide card stretched a camera dropdown and a delay slider across the
+        # whole window for no reason.
+        hardware = self._scrolling(
             [
                 heading("Camera"),
                 _rows(camera_row, self.camera_note),
@@ -806,6 +822,12 @@ class MainWindow(QMainWindow):
                 _rows(hotkey_row, self.hotkey_note),
                 _rows(yield_row),
                 self.yield_delay,
+            ],
+            card=True,
+        )
+
+        lifecycle = self._scrolling(
+            [
                 heading("Starting up"),
                 self.start_minimised_box,
                 _rows(logon_row, self.logon_note),
@@ -823,9 +845,11 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(page)
         row.setContentsMargins(12, 12, 12, 12)
         row.setSpacing(TAB_SPACING)
-        row.addWidget(controls)
+        row.addWidget(hardware)
+        row.addWidget(lifecycle)
         row.addStretch(1)
-        self._application_controls = controls
+        self._application_hardware = hardware
+        self._application_lifecycle = lifecycle
         return page
 
     def _build_footer(self) -> QWidget:
