@@ -1,17 +1,36 @@
 # Hardware
 
 CAD files for the camera housing and monitor mount, organized **one folder per
-part**:
+part**, with the files named after the folder:
 
 ```
 hardware/
-  camera-housing/
-    camera-housing.sldprt   (SolidWorks source)
-    camera-housing.stl      (print-ready mesh)
-    camera-housing.step     (neutral format for FreeCAD/Fusion users)
-  monitor-clamp/
-    ...
+  CameraHousing_Arducam/
+    CameraHousing_Arducam.SLDPRT   (SolidWorks source)
+    CameraHousing_Arducam.STL      (print-ready mesh)
+    CameraHousing_Arducam.STEP     (neutral format for FreeCAD/Fusion users)
+  CameraHousingAssembly_Arducam/
+    CameraHousingAssembly_Arducam.SLDASM
+  ...
 ```
+
+## Naming — which camera a part belongs to
+
+Every part and assembly carries its camera as a suffix, `_Arducam` or `_ELP`.
+The two modules have different footprints and their own mount bases, so a bare
+`MonitorMountBase` stopped being unambiguous the moment both existed.
+
+| | Arducam (shipping) | ELP (evaluated alternative) |
+| --- | --- | --- |
+| Mock camera | `MockCamera_Arducam` | `MockCamera_ELP` |
+| Housing | `CameraHousing_Arducam` | — |
+| Housing, second piece | `CameraHousing2_Arducam` | — |
+| Mount base | `MonitorMountBase_Arducam` | `MonitorMountBase_ELP` |
+| Assembly | `CameraHousingAssembly_Arducam` | `CameraHousingAssembly_ELP` |
+
+Renamed 2026-09-07. Before that the Arducam parts carried no suffix and
+`CameraHousing2_Arducam` was `HousingBottom`, `MockCamera_ELP` was
+`ELP_Camera` — worth knowing when reading commits from before that date.
 
 ## Rules
 
@@ -28,8 +47,10 @@ mesh, and each part it references already carries its own exports.
 CI enforces this: `python tools/check_hardware.py` runs on every push and
 fails if any part folder is incomplete. Run it locally before committing.
 
-Name the files after the folder. When you change a part, re-export **both**
-the STL and STEP so they never drift out of sync with the SolidWorks source.
+Name the files after the folder, and the folder after the part and its camera
+(see *Naming* above). When you change a part, re-export **both** the STL and
+STEP so they never drift out of sync with the SolidWorks source — the checker
+only proves the exports exist, never that they are current.
 
 ## Export settings
 

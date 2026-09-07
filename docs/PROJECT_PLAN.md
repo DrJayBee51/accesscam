@@ -103,9 +103,9 @@ shroud the IR-cut photoresistor, allow tilt aiming, and optionally hold an
 IR-pass filter. Print, mount, and make a reflective dot (3M 7610 tape).
 This first housing is deliberately a **development prototype**: the camera
 slots in from above with no fasteners, so it can be pulled out and re-seated
-freely during bring-up. `MonitorMountBase` replicates the SmartNav base (see
-HARDWARE.md → *Mount base provenance*). Good enough to test with; not the
-shipping design.
+freely during bring-up. `MonitorMountBase_Arducam` replicates the SmartNav
+base (see HARDWARE.md → *Mount base provenance*). Good enough to test with;
+not the shipping design.
 **Exit criteria:** ✅ dot tracked at a steady ~30fps at normal seating distance,
 in daylight and lamplight, with jitter measured. All met — 29.3–29.5fps across
 every run, tracked under lamplight at −7 and daylight at −9 with no exposure
@@ -289,9 +289,10 @@ angle, and filter choice. Must add what the prototype deliberately skipped:
 - A retention feature so the camera cannot fall out when the monitor is bumped
 - Tilt adjustment that *holds* its setting — friction hinge or notched detents,
   ±20° pitch (HARDWARE.md req 3)
-- Clamp or counterweight on `MonitorMountBase` spanning the full 10–40mm bezel
-  range, plus a fastened interface to `HousingBottom` (the prototype has
-  neither; it is a fixed ~29mm perch that simply rests in place)
+- Clamp or counterweight on `MonitorMountBase_Arducam` spanning the full
+  10–40mm bezel range, plus a fastened interface to `CameraHousing2_Arducam`
+  (the prototype has neither; it is a fixed ~29mm perch that simply rests in
+  place)
 - Strain relief for the USB pigtail, and vents
 - Rebuild in **MMGS** — the prototype inherits inch units from the traced
   SmartNav base, but nothing downstream of it needs to

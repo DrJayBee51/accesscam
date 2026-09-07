@@ -15,8 +15,8 @@
 of daily use rather than inherited by accident. It is sufficient for what
 AccessCam does and outperforms any comparable platform on sale, so the
 production housing is dimensioned around this module and the documentation
-assumes it. An ELP module was modelled in `hardware/ELP_Camera/` and evaluated
-as an alternative; it is kept for reference and is not chosen.
+assumes it. An ELP module was modelled in `hardware/MockCamera_ELP/` and
+evaluated as an alternative; it is kept for reference and is not chosen.
 
 AccessCam itself stays camera-agnostic: it speaks UVC, and `--list-devices`
 identifies a candidate by whether it grants 1920×1080. Any IR-capable UVC
@@ -54,17 +54,18 @@ confirm the LEDs glow faintly red and the image goes IR (room lights on).
    actual board and hole spacing with calipers before modeling); standoffs for
    M2 screws or snap posts.
 
-## Mount base provenance — why `MonitorMountBase` is in inches
+## Mount base provenance — why `MonitorMountBase_Arducam` is in inches
 
 The original plan was to reuse the SmartNav's own monitor base. That was
 dropped: **the SmartNav stays connected and working** as a fallback while
 AccessCam is built (see the "user's daily driver breaks" risk in
 PROJECT_PLAN.md), so its base can't be cannibalised.
 
-`MonitorMountBase` is therefore a replica, traced from the only reference
-available — the original base's STL, which was authored in inches. The part is
-consequently modelled in **inches** (2.000 × 1.550 × 1.400in = 50.80 × 39.37 ×
-35.56mm, 0.150in walls) while every other part in `hardware/` is metric.
+`MonitorMountBase_Arducam` is therefore a replica, traced from the only
+reference available — the original base's STL, which was authored in inches.
+The part is consequently modelled in **inches** (2.000 × 1.550 × 1.400in =
+50.80 × 39.37 × 35.56mm, 0.150in walls) while every other part in `hardware/`
+is metric — including `MonitorMountBase_ELP`, whose STEP declares millimetres.
 
 **This is intentional, not a units bug.** The geometry is physically correct
 and its STEP declares `CONVERSION_BASED_UNIT('INCH')`, so FreeCAD/Fusion place
@@ -73,13 +74,14 @@ against the real monitor. The production housing (M3) rebuilds this in MMGS.
 
 ## Development prototype vs. production housing
 
-The current `CameraHousing` / `HousingBottom` / `MonitorMountBase` set is a
-**bring-up prototype**, not the shipping design. The camera slots in from above
-and is held by gravity — no fasteners, no captive retention, no tilt detents,
-and no fastened joint between the housing and the mount base. That is a
-deliberate trade: it gets a camera pointed at the user quickly and lets the
-board be pulled out freely while exposure, filtering, and aim are still being
-tuned. Requirements 2, 3 and 6 above are only partly met by it.
+The current `CameraHousing_Arducam` / `CameraHousing2_Arducam` /
+`MonitorMountBase_Arducam` set is a **bring-up prototype**, not the shipping
+design. The camera slots in from above and is held by gravity — no fasteners,
+no captive retention, no tilt detents, and no fastened joint between the
+housing and the mount base. That is a deliberate trade: it gets a camera
+pointed at the user quickly and lets the board be pulled out freely while
+exposure, filtering, and aim are still being tuned. Requirements 2, 3 and 6
+above are only partly met by it.
 
 Do not print this for daily use. The production revision is scheduled as the
 hardware track of **M3**, once development testing has settled the geometry.
