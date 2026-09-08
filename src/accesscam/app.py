@@ -16,7 +16,7 @@ from pathlib import Path
 
 import cv2
 
-from accesscam import __version__
+from accesscam import __version__, startup
 from accesscam.camera import CameraError, CameraSettings, CameraSource, probe_devices
 from accesscam.config import Config, config_path
 from accesscam.engine import Engine
@@ -94,6 +94,27 @@ def list_devices(max_index: int = 8) -> int:
         return 1
     print("\nSet the one you want with:  python -m accesscam --device N --write-config")
     return 0
+
+
+def register_task() -> int:
+    """Register the elevated startup task, for a caller with no window to click.
+
+    The installer runs this rather than composing a `schtasks` command line of
+    its own, so that what the task runs is defined in exactly one place. Two
+    definitions would drift, and the drift would be invisible until it was
+    confusing: the Application tab compares the registered command against
+    `startup.executable()`, and would start calling a perfectly good task
+    stale because the installer quoted it differently.
+    """
+    outcome = startup.enable()
+    if outcome.ok:
+        log.info("registered the startup task: %s", startup.executable())
+        print("Registered the AccessCam startup task.")
+        return 0
+
+    log.error("could not register the startup task: %s", outcome.message)
+    print(f"error: {outcome.message}", file=sys.stderr)
+    return 1
 
 
 def warn_if_not_elevated() -> None:
@@ -264,6 +285,16 @@ def main() -> int:
         metavar="SECONDS",
         help="keep retrying the camera for this long before giving up (for logon)",
     )
+    parser.add_argument(
+        "--register-task",
+        action="store_true",
+        help="register the elevated startup task and exit (what the installer runs)",
+    )
+    parser.add_argument(
+        "--no-elevate",
+        action="store_true",
+        help="stay unelevated instead of handing over to the elevated copy",
+    )
     args = parser.parse_args()
 
     log.info("--- starting: %s", " ".join(sys.argv[1:]) or "(no arguments)")
@@ -276,8 +307,19 @@ def main() -> int:
         # of these was true, and they fail for entirely different reasons.
         log.info("elevated: %s   uiaccess: %s", is_elevated(), has_uiaccess())
 
+    if args.register_task:
+        return register_task()
+
     if args.list_devices:
         return list_devices()
+
+    # Before the config is read, the camera is opened or the single-instance
+    # claim is taken: an unelevated copy has nothing to hand over except the
+    # act of quitting, and the sooner it does that the less the elevated copy
+    # has to wait for the camera it is still holding.
+    if not args.no_elevate and not args.dry_run and startup.take_over_elevated():
+        log.info("--- exiting with 0")
+        return 0
 
     config = Config.load(args.config)
     log.info("config: %s", args.config or config_path())

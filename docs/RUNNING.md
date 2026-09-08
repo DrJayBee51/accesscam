@@ -76,29 +76,53 @@ not highlight under AccessCam unelevated, and highlight immediately when it is
 launched from an Administrator terminal. UAC prompts and applications running
 as administrator behave the same way.
 
-AccessCam prints a note at startup when it is not elevated, so this is visible
-rather than a mystery.
+AccessCam prints a note at startup when it is not elevated, and the settings
+window carries a standing banner, so this is visible rather than a mystery.
 
+**If you installed AccessCam, this is already done.** Setup offers to register
+the startup task — ticked by default, and the one moment the whole design asks
+for administrator rights. After that AccessCam hands over to an elevated copy
+of itself whenever it finds it is not one, so the Start Menu entry, the desktop
+icon, a taskbar pin and the exe itself all come up elevated with nothing asked
+of you. Skip to step 6.
+
+From a source checkout there is no installer, so spend that one prompt by hand.
 Open PowerShell **as Administrator**, then:
 
 ```powershell
 cd <wherever you cloned it>
-.venv\Scripts\accesscam.exe
+.venv\Scripts\accesscam.exe --register-task
 ```
 
-To skip the elevation prompt every time, register it as a scheduled task that
-runs with highest privileges at logon:
+That registers a scheduled task running with highest privileges at logon —
+equivalent to the command below, except that AccessCam composes it, so the
+task and the app can never disagree about what should be running:
 
 ```powershell
 schtasks /create /tn AccessCam /rl highest /sc onlogon /f `
-  /tr "<path>\.venv\Scripts\accesscam.exe"
+  /tr "<path>\.venv\Scripts\accesscam.exe --ui --wait-for-camera 60"
 ```
+
+From then on `.venv\Scripts\accesscam.exe` started any way at all will notice
+it is unelevated, start the task, and quit in favour of the copy that comes
+up. Pass **`--no-elevate`** when you want the unelevated copy you actually
+asked for — testing the banner, or working on the pipeline itself.
 
 ### Starting it elevated on demand, without a UAC prompt
 
 The task is not only for logon. `schtasks /run /tn AccessCam` starts it
 elevated at any time and asks nobody — creating the task needed administrator
 rights once; running it never does.
+
+**AccessCam now does this to itself.** Before it reads the config, opens the
+camera or claims the single-instance lock, an unelevated copy that finds a
+registered task pointing at its own executable runs that task and quits. That
+is why there is no separate "start elevated" shortcut any more: there is
+nothing to start any other way. Two guards keep it honest — a task pointing at
+some *other* copy is left alone rather than launching a build you did not ask
+for, and a second handover within 90 seconds is refused, so a task registered
+without `/rl highest` produces one wasted relaunch and a line in the log rather
+than an invisible loop.
 
 That matters more here than convenience. A process cannot elevate itself once
 it is running, so every other route to administrator goes through a UAC prompt

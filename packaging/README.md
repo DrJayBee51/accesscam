@@ -28,12 +28,28 @@ Then, with [Inno Setup 6](https://jrsoftware.org/isdl.php) installed:
 
 ## What the installer does, briefly
 
-Per-user install (`{autopf}` under `PrivilegesRequired=lowest`), so it needs no
-administrator rights - matching AccessCam itself, which runs unelevated and
-says so in its own window when that isn't enough (the elevation banner, M4.1).
-Desktop and Start Menu shortcuts, plus a second Start Menu entry that starts
-AccessCam elevated with no UAC prompt via the scheduled task, using the same
-`tools/launch-elevated.vbs` John uses on his own machines.
+Per-user install (`{autopf}` under `PrivilegesRequired=lowest`), so installing
+needs no administrator rights. Desktop and Start Menu shortcuts, both pointing
+straight at `AccessCam.exe`.
+
+One task on the wizard's "Additional tasks" page, **ticked by default**, is the
+exception: *Always run AccessCam with administrator rights*. It runs
+`AccessCam.exe --register-task` at `ssPostInstall` - plainly first, since a
+machine-wide install is already elevated, then through `ShellExec('runas', ...)`
+if that fails, which is the single UAC prompt the design spends on purpose. The
+app registers its own task rather than this script composing a `schtasks`
+command line, so that what the task runs is defined once; a second definition
+would drift, and `startup.state()` would start reporting a perfectly good task
+as stale because the quoting differed.
+
+After that AccessCam hands over to its own elevated copy whenever it finds
+itself unelevated (`startup.take_over_elevated`), so every route in - shortcut,
+pin, or the exe itself - ends up elevated with nothing more asked. Declining
+the task leaves a working unelevated install, with the window's banner (M4.1)
+and the Application tab offering the same registration later.
+
+`tools/launch-elevated.vbs` is still installed as an escape hatch for a machine
+where that handover does not work, though nothing shortcuts to it now.
 
 Uninstall removes the logon task if one is registered - see the `[Code]`
 section in `AccessCam.iss` and the M4.5 writeup in `docs/PROJECT_PLAN.md` for

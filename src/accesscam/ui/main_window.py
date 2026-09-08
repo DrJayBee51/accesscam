@@ -793,9 +793,13 @@ class MainWindow(QMainWindow):
                 "startup shortcut, because AccessCam needs to run elevated — "
                 "Windows otherwise stops the cursor registering as a hover on "
                 "anything running at higher privilege, such as an on-screen "
-                "keyboard.\n\nCreating the task needs administrator rights, so "
-                "this only works when AccessCam itself was started as "
-                "administrator.",
+                "keyboard.\n\nThe same task is how AccessCam comes up elevated "
+                "when you start it by hand: an unelevated copy runs the task and "
+                "quits in favour of the elevated one it starts. Unticking this "
+                "gives that up as well as the logon start.\n\nCreating the task "
+                "needs administrator rights, so this only works when AccessCam "
+                "itself was started as administrator — or when the installer did "
+                "it for you.",
                 "starting at logon",
             )
         )
@@ -1091,7 +1095,9 @@ class MainWindow(QMainWindow):
                 "to update it — you will need AccessCam running as administrator."
             )
         elif logon.enabled:
-            self.logon_note.setText("Registered as a scheduled task, elevated.")
+            self.logon_note.setText(
+                "Registered as a scheduled task. Every launch comes up elevated through it."
+            )
         else:
             self.logon_note.setText("")
 

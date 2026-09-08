@@ -16,8 +16,12 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from accesscam.log import log
 
 TASK_NAME = "AccessCam"
 
@@ -251,3 +255,132 @@ def relaunch_elevated() -> Outcome:
         "Could not start an elevated copy of AccessCam. Registering the logon task from "
         "this tab makes this work without a prompt at all.",
     )
+
+
+# --- Coming up elevated without anyone being asked --------------------------
+
+# A copy that hands over to an elevated one, only for that copy to come back
+# unelevated too, would hand over again - forever, invisibly, at every launch.
+# A task can be registered without /rl highest, and policy can decline to
+# honour one that has it; neither says so out loud. This marker lets the copy
+# that is about to hand over see that the last attempt did not take.
+HANDOFF_COOLDOWN_SECONDS = 90
+
+
+def _already_privileged() -> bool:
+    """Whether this copy can already reach a higher-integrity window.
+
+    Elevation is one way; UIAccess is the other, and the better one - it is
+    what the SmartNav uses and needs no administrator rights at all. Either
+    means there is nothing to hand over for. Imported here rather than at
+    module scope so that the rest of this module, and its tests, stay usable
+    off Windows.
+    """
+    from accesscam.mouse.windows import has_uiaccess, is_elevated
+
+    return is_elevated() or has_uiaccess()
+
+
+def _handoff_marker() -> Path:
+    from accesscam.config import config_dir
+
+    return config_dir() / "elevating"
+
+
+def _handed_over_recently() -> bool:
+    try:
+        age = time.time() - _handoff_marker().stat().st_mtime
+    except OSError:
+        return False
+    return 0 <= age < HANDOFF_COOLDOWN_SECONDS
+
+
+def _record_handover() -> None:
+    marker = _handoff_marker()
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+    except OSError as exc:
+        # Not fatal: the marker only guards against a loop that needs a broken
+        # task to happen at all. Losing it must not stop AccessCam starting.
+        log.warning("could not record the handover attempt: %s", exc)
+
+
+def carries_settings(argv: Sequence[str]) -> bool:
+    """Whether this launch asked for something the startup task would not do.
+
+    The task runs one fixed command line, so anything typed on this one is
+    lost in the handover. A plain launch has nothing to lose - the shortcut,
+    the pinned icon, the double-clicked exe, which is the case all of this
+    exists for. A launch carrying `--device 2` or `--headless` is someone
+    being specific, and quietly starting a copy without those flags would be a
+    worse failure than staying unelevated and saying so in the banner.
+    """
+    skip_value = False
+    for item in argv:
+        if skip_value:
+            skip_value = False
+            continue
+        if item == "--wait-for-camera":
+            # The task waits for the camera itself, and for longer.
+            skip_value = True
+            continue
+        if item == "--ui" or item.startswith("--wait-for-camera="):
+            continue
+        return True
+    return False
+
+
+def take_over_elevated(argv: Sequence[str] | None = None) -> bool:
+    """Start an elevated copy, and report whether this one should now quit.
+
+    AccessCam is worth very little unelevated - UIPI drops its input on the
+    floor for on-screen keyboards and for anything else running as
+    administrator - and where the task exists, an elevated copy costs a
+    `schtasks /run` and asks nobody. So an unelevated launch is treated as a
+    mistake to correct rather than a state to report, whichever shortcut,
+    pinned icon or terminal it came from.
+
+    Deliberately never falls back to a UAC prompt, unlike `relaunch_elevated`:
+    this runs at every launch without being asked for, and a prompt nobody
+    invited is both a surprise and, for someone driving the pointer with their
+    head, unanswerable.
+    """
+    if not supported() or _already_privileged():
+        return False
+
+    argv = sys.argv[1:] if argv is None else argv
+    if carries_settings(argv):
+        log.info("started with %s - staying unelevated rather than dropping them", " ".join(argv))
+        return False
+
+    status = state()
+    if not status.enabled:
+        # Nothing to hand over to. The window's banner says so and offers to
+        # register the task, which is the one step that does need a prompt.
+        return False
+    if status.stale:
+        # The task runs some other copy - an old checkout, a previous install.
+        # Starting that instead of this one would be a baffling way to launch
+        # the wrong AccessCam, so say so and stay put.
+        log.warning("the logon task runs %s - not handing over to it", registered_command())
+        return False
+    if _handed_over_recently():
+        log.warning(
+            "handed over less than %ds ago and this copy is still not elevated - "
+            "carrying on unelevated rather than looping",
+            HANDOFF_COOLDOWN_SECONDS,
+        )
+        return False
+
+    _record_handover()
+    result = _run(["schtasks", "/run", "/tn", TASK_NAME])
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        log.warning(
+            "the logon task would not start: %s", detail[-1] if detail else "no detail given"
+        )
+        return False
+
+    log.info("started an elevated copy through the logon task - quitting to make room")
+    return True

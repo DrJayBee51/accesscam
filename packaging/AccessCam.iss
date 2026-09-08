@@ -47,9 +47,22 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
+; Ticked by default, and the only thing in this installer that asks for
+; administrator rights. AccessCam is close to useless unelevated - UIPI drops
+; its input for on-screen keyboards and for any window running as
+; administrator - and the one route to elevation that never raises a UAC
+; prompt is a scheduled task, which needs administrator rights to *create*.
+; Doing it here spends that prompt while a mouse is still in someone's hand.
+; Declining leaves AccessCam installed and working, with the Application tab
+; offering the same thing later.
+Name: "elevated"; Description: "&Always run AccessCam with administrator rights (asks once, now)"; \
+    GroupDescription: "Elevation:"
 
 [Files]
 Source: "..\dist\AccessCam\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Still installed although nothing shortcuts to it any more: it is the escape
+; hatch for a machine where AccessCam's own handover does not work, and
+; RUNNING.md tells people to point a shortcut at it.
 Source: "..\tools\launch-elevated.vbs"; DestDir: "{app}"; Flags: ignoreversion
 
 ; PyInstaller 6 relocates everything non-binary under _internal\ to keep the
@@ -63,10 +76,12 @@ Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\packaging\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [Icons]
+; One entry, not two. AccessCam hands over to its own elevated copy through
+; the startup task whenever it finds itself unelevated, so every way of
+; starting it - this shortcut, the desktop icon, a taskbar pin, the exe itself
+; - ends up elevated. A second "start elevated" entry beside this one would
+; only imply that this one is not.
 Name: "{group}\AccessCam"; Filename: "{app}\AccessCam.exe"
-Name: "{group}\AccessCam (start elevated)"; Filename: "{win}\System32\wscript.exe"; \
-    Parameters: """{app}\launch-elevated.vbs"""; IconFilename: "{app}\AccessCam.exe"; \
-    Comment: "Starts AccessCam with administrator rights, with no prompt, using the logon task registered from AccessCam's Application tab."
 Name: "{group}\Uninstall AccessCam"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\AccessCam"; Filename: "{app}\AccessCam.exe"; Tasks: desktopicon
 
@@ -152,6 +167,74 @@ begin
   end
   else
     Log('AccessCam: logon task removed after elevating');
+end;
+
+procedure ReportTaskRegistrationFailed();
+begin
+  if WizardSilent() then
+    exit;
+  MsgBox('AccessCam is installed, but the task that starts it with ' +
+    'administrator rights could not be registered.' +
+    Chr(13) + Chr(10) + Chr(13) + Chr(10) +
+    'AccessCam will still run. Without administrator rights, on-screen ' +
+    'keyboards and windows running as administrator ignore the pointer ' +
+    'hovering over them.' +
+    Chr(13) + Chr(10) + Chr(13) + Chr(10) +
+    'To fix it later: right-click AccessCam, Run as administrator, then tick ' +
+    '"Start when I log in" on the Application tab.',
+    mbInformation, MB_OK);
+end;
+
+procedure RegisterElevationTask();
+var
+  ResultCode: Integer;
+  Exe: String;
+begin
+  Exe := ExpandConstant('{app}\AccessCam.exe');
+
+  // AccessCam registers its own task rather than this script composing a
+  // schtasks command line: one definition of what the task runs, in the place
+  // that also reads it back and decides whether it is current.
+  //
+  // Plain attempt first - a machine-wide install is already elevated, and
+  // asking twice for rights we hold would be its own small insult.
+  Log('AccessCam: registering the elevated startup task');
+  if Exec(Exe, '--register-task', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and
+     (ResultCode = 0) then
+  begin
+    Log('AccessCam: startup task registered without elevating');
+    exit;
+  end;
+
+  // Creating a task at /rl highest needs administrator rights. This is the
+  // single prompt the design spends deliberately, here rather than at every
+  // launch: see docs/RUNNING.md on why a UAC prompt is the one dialog the
+  // person this is built for cannot answer.
+  Log('AccessCam: asking for elevation to register the startup task');
+  if not ShellExec('runas', Exe, '--register-task', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode) then
+  begin
+    Log('AccessCam: the elevation prompt was declined or failed to launch');
+    ReportTaskRegistrationFailed();
+    exit;
+  end;
+
+  if ResultCode <> 0 then
+  begin
+    Log('AccessCam: --register-task returned ' + IntToStr(ResultCode));
+    ReportTaskRegistrationFailed();
+  end
+  else
+    Log('AccessCam: startup task registered');
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  // After the files are in place - it runs the installed exe - and before the
+  // [Run] entry offers to launch AccessCam, so that "Launch AccessCam now"
+  // already comes up elevated.
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('elevated') then
+    RegisterElevationTask();
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
