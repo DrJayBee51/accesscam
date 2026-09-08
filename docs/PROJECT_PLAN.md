@@ -558,6 +558,22 @@ for someone with a clone, a venv and a terminal. The installing user has an
 exe, a camera in a box, and a piece of reflective tape.
 *Done: a guide that starts at "download this" and ends at a moving cursor.*
 
+**M4.11 — Elevated with no steps after the install.** ✅ *Done 2026-09-07,
+validated 2026-09-08.* M4.1 through M4.5 left elevation costing the user two
+manual steps after every install — click "Restart as administrator", answer a
+UAC prompt on the secure desktop, then find the Application tab and tick a box
+— and the first of those is a dialog a head-tracked cursor cannot reach, so it
+had to be done with the QuadStick or someone else's hand. Windows will not
+grant the rights without an administrator decision somewhere; what could move
+was *when*. The installer now registers the startup task at the end of the
+install (ticked by default, elevating only that call), and an unelevated
+AccessCam runs that task and quits in favour of the elevated copy it starts,
+before it reads the config or opens the camera. Every route in — Start Menu,
+desktop, taskbar pin, the exe — comes up elevated.
+*Done: installed on the work PC on 2026-09-08 from an installer built at
+`a9c2ee7`, and it worked. That machine is where AccessCam is the daily driver
+and the SmartNav is not recognised, so it is the install that mattered.*
+
 #### Known gaps that M4 consciously ships with
 
 - ~~The hotkey can only be changed by editing JSON.~~ ✅ Done 2026-08-21:
