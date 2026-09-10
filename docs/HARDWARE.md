@@ -74,11 +74,13 @@ against the real monitor. The production housing (M3) rebuilds this in MMGS.
 
 ## Development prototype vs. production housing
 
-The current `CameraHousing_Arducam` / `CameraHousing2_Arducam` /
-`MonitorMountBase_Arducam` set is a **bring-up prototype**, not the shipping
-design. The camera slots in from above and is held by gravity — no fasteners,
-no captive retention, no tilt detents, and no fastened joint between the
-housing and the mount base. That is a deliberate trade: it gets a camera
+The current `CameraHousing_Arducam` / `MonitorMountBase_Arducam` pair is a
+**bring-up prototype**, not the shipping design. The housing is one piece — a
+second piece was carried until 2026-09-10, when a tang moulded into the housing
+took over the job — and that tang slips into the mount base's channel on about
+0.23mm of clearance per flank. The camera slots in from above and is held by
+gravity — no fasteners, no captive retention, no tilt detents, and nothing
+fastening the housing to the mount base. That is a deliberate trade: it gets a camera
 pointed at the user quickly and lets the board be pulled out freely while
 exposure, filtering, and aim are still being tuned. Requirements 2, 3 and 6
 above are only partly met by it.

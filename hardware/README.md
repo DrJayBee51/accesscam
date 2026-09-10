@@ -24,13 +24,14 @@ The two modules have different footprints and their own mount bases, so a bare
 | --- | --- | --- |
 | Mock camera | `MockCamera_Arducam` | `MockCamera_ELP` |
 | Housing | `CameraHousing_Arducam` | — |
-| Housing, second piece | `CameraHousing2_Arducam` | — |
 | Mount base | `MonitorMountBase_Arducam` | `MonitorMountBase_ELP` |
 | Assembly | `CameraHousingAssembly_Arducam` | `CameraHousingAssembly_ELP` |
 
 Renamed 2026-09-07. Before that the Arducam parts carried no suffix and
-`CameraHousing2_Arducam` was `HousingBottom`, `MockCamera_ELP` was
-`ELP_Camera` — worth knowing when reading commits from before that date.
+`MockCamera_ELP` was `ELP_Camera` — worth knowing when reading commits from
+before that date. Commits before 2026-09-10 also carry a second housing piece,
+`CameraHousing2_Arducam` (`HousingBottom` before the rename); the one-piece
+housing replaced it.
 
 ## Rules
 

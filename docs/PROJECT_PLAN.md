@@ -290,9 +290,9 @@ angle, and filter choice. Must add what the prototype deliberately skipped:
 - Tilt adjustment that *holds* its setting — friction hinge or notched detents,
   ±20° pitch (HARDWARE.md req 3)
 - Clamp or counterweight on `MonitorMountBase_Arducam` spanning the full
-  10–40mm bezel range, plus a fastened interface to `CameraHousing2_Arducam`
+  10–40mm bezel range, plus a fastened interface to `CameraHousing_Arducam`
   (the prototype has neither; it is a fixed ~29mm perch that simply rests in
-  place)
+  place, and the housing's tang only slips into its channel)
 - Strain relief for the USB pigtail, and vents
 - Rebuild in **MMGS** — the prototype inherits inch units from the traced
   SmartNav base, but nothing downstream of it needs to
