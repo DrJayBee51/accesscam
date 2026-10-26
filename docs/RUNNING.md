@@ -544,6 +544,48 @@ turning on before chasing a scheduling problem (Administrator):
 wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
 ```
 
+## Reading the tracking log
+
+Every five minutes the same log gets one line on how tracking went:
+
+```
+tracking: 29.3fps  lost 0.1% (8/8797)  dropouts 8, longest 1 frames  misses outside roi 8  marker area 43px brightness 214
+```
+
+- **`lost`** and **`dropouts`** — a high loss with few dropouts is someone away
+  from the desk; hundreds of dropouts is flicker, which is what feels spotty.
+- **`misses`** — why the lost frames were lost. `dark` means nothing cleared
+  `threshold`; the others name the filter that turned a blob away. The reason
+  is taken from the *largest* rejected blob anywhere in frame, so a lit window
+  outside the box can file a miss under `outside roi` that was really the
+  marker failing `not round`.
+- **`peak when dark`** — the brightest pixel when nothing cleared the
+  threshold. Just under `threshold` is a marker going dim.
+- **`marker area` / `brightness`** — averages over the frames where it was
+  found. Steady for weeks, then not, is the thing to look for. A sudden fall
+  to a few pixels at threshold-level brightness means the track has moved to
+  something that is not the marker - a highlight on a cheek, in the case that
+  prompted this.
+
+### Recording 30 seconds
+
+When the numbers say something is wrong but not what, record it. Create an
+empty file called `record` beside the config:
+
+```powershell
+New-Item -ItemType File "$env:APPDATA\AccessCam\record"
+```
+
+Within a second AccessCam deletes it and writes 30 seconds to
+`%APPDATA%\AccessCam\recordings\<date-time>\`: `frames.csv`, a row per frame
+with what was tracked or why nothing was, and `frames.avi`, the camera's view
+with the chosen blob outlined green and the box in blue. The video shows a face
+and never leaves the machine.
+
+The outline is drawn into the frames, which shaves the marker's edge if the
+video is later replayed through the tracker - compare settings against each
+other on a replay, not against what the live run found.
+
 ## Sharing the cursor with a mouse
 
 When something else moves the cursor — someone picking up the real mouse to

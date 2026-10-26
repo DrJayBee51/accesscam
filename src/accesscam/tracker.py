@@ -44,6 +44,10 @@ class TrackResult:
     area: float = 0.0
     brightness: float = 0.0
     contour: np.ndarray | None = None
+    # Why nothing was found, judged by the largest blob that was rejected:
+    # "dark" when nothing cleared the threshold at all, otherwise the filter
+    # that turned it away. Empty when found.
+    miss: str = ""
 
     @property
     def position(self) -> tuple[float, float]:
@@ -98,19 +102,18 @@ class DotTracker:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         candidates: list[_Candidate] = []
+        rejected: list[tuple[float, str]] = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if not self.min_area <= area <= self.max_area:
-                continue
-            if _circularity(contour, area) < self.min_circularity:
-                continue
-            if self.roi is not None and not _inside(_geometric_centroid(contour), self.roi):
+            reason = self._rejection(contour, area)
+            if reason:
+                rejected.append((area, reason))
                 continue
             candidates.append(_Candidate(contour, area, _mean_intensity(gray, contour)))
 
         if not candidates:
             self._last = None
-            return TrackResult(found=False)
+            return TrackResult(found=False, miss=max(rejected)[1] if rejected else "dark")
 
         chosen = self._select(candidates)
         x, y = _weighted_centroid(gray, chosen.contour)
@@ -123,6 +126,18 @@ class DotTracker:
             brightness=chosen.brightness,
             contour=chosen.contour,
         )
+
+    def _rejection(self, contour: np.ndarray, area: float) -> str:
+        """Which filter turns this blob away, or "" if it is a candidate."""
+        if area < self.min_area:
+            return "too small"
+        if area > self.max_area:
+            return "too large"
+        if _circularity(contour, area) < self.min_circularity:
+            return "not round"
+        if self.roi is not None and not _inside(_geometric_centroid(contour), self.roi):
+            return "outside roi"
+        return ""
 
     def _select(self, candidates: list[_Candidate]) -> _Candidate:
         """Prefer continuity with the last frame, then the brightest candidate.

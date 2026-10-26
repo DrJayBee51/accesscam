@@ -19,21 +19,24 @@ a front end that cannot suppress output is not really a front end.
 from __future__ import annotations
 
 import contextlib
+import csv
 import threading
 import time
+from collections import Counter
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 import cv2
 import numpy as np
 
 from accesscam.camera import CameraError, CameraSource
-from accesscam.config import Config
+from accesscam.config import Config, config_dir
 from accesscam.hotkeys import PauseController
 from accesscam.log import log
 from accesscam.mapper import MapperSettings, RelativeMapper
 from accesscam.mouse import CursorController
 from accesscam.smoothing import PointSmoother, SmoothingSettings
-from accesscam.tracker import DotTracker
+from accesscam.tracker import DotTracker, TrackResult
 
 # How long frames must stop arriving before the camera is treated as gone
 # rather than merely dropping frames. Long enough to outlast a stall, short
@@ -48,6 +51,129 @@ RECONNECT_INTERVAL = 1.0
 # How far to look when the camera does not come back on its own index. Matches
 # what `probe_devices` scans.
 MAX_DEVICE_INDEX = 8
+
+# How often a tracking summary goes in the log. Five minutes keeps a working
+# day to about a hundred lines, so the rotating log still holds weeks of starts
+# and stops, while a dropout too brief to see on screen still shows up in the
+# counts.
+STATS_EVERY = 300.0
+
+# A recording is asked for by creating a file called `record` beside the
+# config, and lasts this long. A file rather than a button because the question
+# it answers - what was the tracker actually following just now - comes up
+# while the window is closed and the cursor is in use.
+RECORD_SECONDS = 30.0
+RECORD_CHECK_EVERY = 1.0
+
+
+def record_trigger() -> Path:
+    return config_dir() / "record"
+
+
+class _Recording:
+    """Every frame for a short while: a CSV row each, and a video with the
+    tracker's choice drawn on it, so a wrong pick can be seen and not inferred."""
+
+    def __init__(self, folder: Path, roi: tuple[int, int, int, int] | None, now: float) -> None:
+        folder.mkdir(parents=True, exist_ok=True)
+        self.folder = folder
+        self.started = now
+        self.until = now + RECORD_SECONDS
+        self._roi = roi
+        self._file = open(folder / "frames.csv", "w", newline="")  # noqa: SIM115 - closed in close()
+        self._csv = csv.writer(self._file)
+        self._csv.writerow(["t", "found", "x", "y", "area", "brightness", "miss", "peak"])
+        self._video: cv2.VideoWriter | None = None
+
+    def add(self, frame: np.ndarray, result: TrackResult, peak: int, now: float) -> None:
+        t = now - self.started
+        if result.found:
+            row = [f"{t:.3f}", 1, f"{result.x:.2f}", f"{result.y:.2f}"]
+            row += [f"{result.area:.0f}", f"{result.brightness:.0f}", "", ""]
+        else:
+            row = [f"{t:.3f}", 0, "", "", "", "", result.miss, peak]
+        self._csv.writerow(row)
+
+        if self._video is None:
+            height, width = frame.shape[:2]
+            path = str(self.folder / "frames.avi")
+            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+            self._video = cv2.VideoWriter(path, fourcc, 30.0, (width, height))
+        shown = frame.copy()
+        if self._roi is not None:
+            x, y, w, h = self._roi
+            cv2.rectangle(shown, (x, y), (x + w, y + h), (255, 160, 0), 1)
+        if result.contour is not None:
+            cv2.drawContours(shown, [result.contour], -1, (0, 255, 0), 1)
+        label = f"{t:6.2f}s  " + (f"area {result.area:.0f}" if result.found else result.miss)
+        cv2.putText(shown, label, (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+        self._video.write(shown)
+
+    def close(self) -> None:
+        self._file.close()
+        if self._video is not None:
+            self._video.release()
+
+
+class _TrackingStats:
+    """A window of frames, summarised into one log line.
+
+    The point is a record to compare against: "spotty for a while" is a feeling,
+    and a number per five minutes is something a month from now can be held up
+    against. Why each lost frame was lost is the part that says what to change -
+    "dark" with a peak just under the threshold is a dim marker, a peak far
+    below it is no marker in view at all, and "outside roi" is a box that no
+    longer fits where the user sits.
+    """
+
+    def __init__(self, now: float) -> None:
+        self._run = 0
+        self.reset(now)
+
+    def reset(self, now: float) -> None:
+        self.started = now
+        self.frames = 0
+        self.lost = 0
+        self.dropouts = 0
+        self.longest = 0
+        self.misses: Counter[str] = Counter()
+        self.dark_peak = 0
+        self.area = 0.0
+        self.brightness = 0.0
+
+    def add(self, result: TrackResult, peak: int) -> None:
+        self.frames += 1
+        if result.found:
+            self._run = 0
+            self.area += result.area
+            self.brightness += result.brightness
+            return
+
+        self.lost += 1
+        self.misses[result.miss] += 1
+        if result.miss == "dark":
+            self.dark_peak += peak
+        if self._run == 0:
+            self.dropouts += 1
+        self._run += 1
+        self.longest = max(self.longest, self._run)
+
+    def line(self, now: float) -> str:
+        found = self.frames - self.lost
+        parts = [
+            f"tracking: {self.frames / max(now - self.started, 1e-6):.1f}fps",
+            f"lost {100 * self.lost / self.frames:.1f}% ({self.lost}/{self.frames})",
+            f"dropouts {self.dropouts}, longest {self.longest} frames",
+        ]
+        if self.misses:
+            parts.append("misses " + ", ".join(f"{k} {n}" for k, n in self.misses.most_common()))
+        if self.misses["dark"]:
+            parts.append(f"peak when dark {self.dark_peak / self.misses['dark']:.0f}")
+        if found:
+            parts.append(
+                f"marker area {self.area / found:.0f}px brightness {self.brightness / found:.0f}"
+            )
+        return "  ".join(parts)
 
 
 @dataclass(frozen=True)
@@ -133,6 +259,9 @@ class Engine:
         self._tracking = False
         self._position: tuple[float, float] | None = None
         self._frame: np.ndarray | None = None
+        self._stats = _TrackingStats(time.monotonic())
+        self._recording: _Recording | None = None
+        self._next_trigger_check = 0.0
 
         self.pause.on_change(self._on_pause_change)
 
@@ -153,6 +282,10 @@ class Engine:
         thread, self._thread = self._thread, None
         if thread is not None:
             thread.join(timeout)
+        if self._recording is not None:
+            with contextlib.suppress(Exception):
+                self._recording.close()
+            self._recording = None
 
     @property
     def running(self) -> bool:
@@ -288,6 +421,45 @@ class Engine:
             self._tracking = result.found
             self._position = position
             self._frame = frame
+
+        # The peak is only worth its full-frame scan when there is no marker.
+        peak = 0 if result.found else int(gray.max())
+        self._stats.add(result, peak)
+        now = time.monotonic()
+        if now - self._stats.started >= STATS_EVERY:
+            log.info("%s", self._stats.line(now))
+            self._stats.reset(now)
+        self._record(frame, result, peak, now)
+
+    def _record(self, frame: np.ndarray, result: TrackResult, peak: int, now: float) -> None:
+        """Keep a recording going, or start one if the trigger file has appeared.
+
+        Never allowed to stop the loop: this thread is someone's mouse, and a
+        full disk or a codec that will not open is not a reason for it to stop.
+        """
+        try:
+            if self._recording is None and now >= self._next_trigger_check:
+                self._next_trigger_check = now + RECORD_CHECK_EVERY
+                trigger = record_trigger()
+                if trigger.exists():
+                    trigger.unlink()
+                    folder = config_dir() / "recordings" / time.strftime("%Y%m%d-%H%M%S")
+                    self._recording = _Recording(folder, self.tracker.roi, now)
+                    log.info("recording %.0fs of frames to %s", RECORD_SECONDS, folder)
+            if self._recording is None:
+                return
+            if now >= self._recording.until:
+                self._recording.close()
+                log.info("recording finished: %s", self._recording.folder)
+                self._recording = None
+                return
+            self._recording.add(frame, result, peak, now)
+        except Exception:
+            log.exception("recording failed - dropping it")
+            if self._recording is not None:
+                with contextlib.suppress(Exception):
+                    self._recording.close()
+            self._recording = None
 
     def _loop(self) -> None:
         starved_since: float | None = None

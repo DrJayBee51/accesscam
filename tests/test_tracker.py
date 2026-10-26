@@ -30,6 +30,16 @@ def test_reports_not_found_on_dark_frame():
     assert not result.found
 
 
+def test_says_why_nothing_was_found():
+    assert DotTracker().process(np.zeros((240, 320), dtype=np.uint8)).miss == "dark"
+    assert DotTracker(min_area=500.0).process(frame_with_dot(160, 120, radius=3)).miss == (
+        "too small"
+    )
+    outside = DotTracker(roi=(0, 0, 50, 50)).process(frame_with_dot(160, 120))
+    assert outside.miss == "outside roi"
+    assert DotTracker().process(frame_with_dot(160, 120)).miss == ""
+
+
 def test_ignores_blobs_below_min_area():
     tracker = DotTracker(min_area=500.0)
     result = tracker.process(frame_with_dot(160, 120, radius=3))

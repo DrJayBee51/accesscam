@@ -95,6 +95,41 @@ def test_counts_frames_and_losses():
     assert status.lost_fraction == pytest.approx(1 / 3)
 
 
+def test_tracking_summary_counts_dropouts_and_why():
+    engine = build()
+    dark = np.zeros((480, 640, 3), dtype=np.uint8)
+    dark[0, 0] = 90
+    for frame in [frame_with_dot(300, 240), dark, dark, frame_with_dot(300, 240), dark]:
+        engine.step(frame)
+
+    line = engine._stats.line(engine._stats.started + 1.0)
+    assert "lost 60.0% (3/5)" in line
+    assert "dropouts 2, longest 2 frames" in line
+    assert "misses dark 3" in line
+    assert "peak when dark 90" in line
+
+
+def test_the_record_file_starts_a_recording(tmp_path, monkeypatch):
+    import accesscam.engine as engine_module
+
+    monkeypatch.setattr(engine_module, "config_dir", lambda: tmp_path)
+    (tmp_path / "record").touch()
+    engine = build()
+    for frame in [frame_with_dot(300, 240), np.zeros((480, 640, 3), dtype=np.uint8)]:
+        engine.step(frame)
+    engine._recording.until = 0.0
+    engine.step(frame_with_dot(300, 240))  # past its end: closes rather than records
+
+    assert not (tmp_path / "record").exists()
+    assert engine._recording is None
+    [folder] = (tmp_path / "recordings").iterdir()
+    rows = (folder / "frames.csv").read_text().splitlines()
+    assert len(rows) == 3
+    assert rows[1].split(",")[1] == "1"
+    assert rows[2].split(",")[6] == "dark"
+    assert (folder / "frames.avi").stat().st_size > 0
+
+
 def test_status_reports_tracking_state_and_position():
     engine = build()
     engine.step(frame_with_dot(300, 240))
