@@ -48,6 +48,17 @@ RECONNECT_AFTER = 2.0
 # spinning.
 RECONNECT_INTERVAL = 1.0
 
+# A camera that still delivers, just barely. On two evenings running the
+# Arducam fell to 1fps around dusk and stayed there - all weekend, the second
+# time - and because a frame did keep arriving, the silence test above never
+# fired. Reopening it the next morning brought back 29fps. Same floor as the
+# tray's "no frames" warning, held long enough to outlast a hub stall.
+SLOW_BELOW_FPS = 5.0
+SLOW_RECONNECT_AFTER = 10.0
+# If a reopen did not help, wait twice as long before the next. A camera that
+# really is slow should not be torn down every ten seconds all night.
+SLOW_RECONNECT_MAX = 300.0
+
 # How far to look when the camera does not come back on its own index. Matches
 # what `probe_devices` scans.
 MAX_DEVICE_INDEX = 8
@@ -464,12 +475,37 @@ class Engine:
     def _loop(self) -> None:
         starved_since: float | None = None
         next_attempt = 0.0
+        slow_since: float | None = None
+        slow_hold = SLOW_RECONNECT_AFTER
 
         while not self._stop.is_set():
-            frame = self.camera.read()
+            try:
+                frame = self.camera.read()
+            except CameraError:
+                # A handle that a failed reconnect has already let go of. That
+                # is a camera still missing, not a reason for the thread to die.
+                frame = None
             if frame is not None:
                 starved_since = None
                 self.step(frame)
+
+                now = time.monotonic()
+                fps = self.camera.measured_fps
+                if fps >= SLOW_BELOW_FPS:
+                    slow_since, slow_hold = None, SLOW_RECONNECT_AFTER
+                elif slow_since is None:
+                    slow_since = now
+                elif now - slow_since >= slow_hold:
+                    log.info(
+                        "camera %s is delivering %.1ffps - reopening it",
+                        self.camera.settings.device,
+                        fps,
+                    )
+                    # Failing leaves the camera closed, and the silence path
+                    # below takes over the retrying.
+                    self._reconnect()
+                    slow_since = None
+                    slow_hold = min(slow_hold * 2, SLOW_RECONNECT_MAX)
                 continue
 
             # A dropped frame is normal; a dead camera is not, and the two look
@@ -479,7 +515,13 @@ class Engine:
             if starved_since is None:
                 starved_since = now
             elif now - starved_since >= RECONNECT_AFTER and now >= next_attempt:
+                if next_attempt == 0.0:
+                    log.info(
+                        "camera %s stopped delivering - reconnecting",
+                        self.camera.settings.device,
+                    )
                 if self._reconnect():
+                    next_attempt = 0.0
                     starved_since = None
                 else:
                     next_attempt = now + RECONNECT_INTERVAL
@@ -535,8 +577,6 @@ class Engine:
         config says 1 is exactly the case a naive reopen fails at while looking
         like a hardware fault.
         """
-        log.info("camera %s stopped delivering - reconnecting", self.camera.settings.device)
-
         # Let go of the dead handle first, or the reopen contends with it. No
         # exposure restoring here: this camera is not being abandoned, and the
         # driver would not hear it anyway.

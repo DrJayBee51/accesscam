@@ -234,6 +234,46 @@ def test_the_loop_reconnects_a_camera_that_stays_silent(sources, monkeypatch):
     assert recovered, "the loop never reconnected a permanently silent camera"
 
 
+def test_the_loop_reopens_a_camera_stuck_delivering_slowly(sources, monkeypatch):
+    # The weekend failure: one frame a second, all weekend. Frames kept
+    # arriving, so the silence test never fired.
+    sources({1: True})
+    monkeypatch.setattr(engine_module, "SLOW_RECONNECT_AFTER", 0.05)
+
+    crawling = LiveCamera(device=1)
+    crawling.measured_fps = 1.0
+
+    engine = build_engine(crawling)
+    engine.start()
+    try:
+        recovered = _wait_for(lambda: engine.camera is not crawling)
+    finally:
+        engine.stop()
+
+    assert recovered, "a camera stuck at 1fps was never reopened"
+
+
+def test_a_closed_handle_does_not_kill_the_loop(sources, monkeypatch):
+    # After a failed reconnect the camera is left closed, and a real one then
+    # raises on read rather than returning None. The thread must keep retrying.
+    sources({1: True})
+    monkeypatch.setattr(engine_module, "RECONNECT_AFTER", 0.05)
+    monkeypatch.setattr(engine_module, "RECONNECT_INTERVAL", 0.01)
+
+    class Closed(DeadCamera):
+        def read(self):
+            raise CameraError("Camera is not open. Call open() first.")
+
+    engine = build_engine(Closed(device=1))
+    engine.start()
+    try:
+        recovered = _wait_for(lambda: isinstance(engine.camera, LiveCamera))
+    finally:
+        engine.stop()
+
+    assert recovered
+
+
 def _wait_for(condition, timeout: float = 5.0) -> bool:
     import time
 
