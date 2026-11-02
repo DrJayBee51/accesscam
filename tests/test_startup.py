@@ -216,6 +216,20 @@ def test_a_second_handover_in_a_row_is_refused(handover):
     assert len(handover.calls) == 1
 
 
+def test_quitting_and_reopening_hands_over_again(handover, monkeypatch):
+    # The reported failure: open, quit, reopen within 90s - and the reopen came
+    # up unelevated, because the guard could not tell a handover that worked
+    # from one that did not. The elevated copy starting is what says it worked.
+    assert startup.take_over_elevated() is True
+
+    monkeypatch.setattr(startup, "_already_privileged", lambda: True)
+    assert startup.take_over_elevated() is False  # the elevated copy's own check
+    monkeypatch.setattr(startup, "_already_privileged", lambda: False)
+
+    assert startup.take_over_elevated() is True
+    assert len(handover.calls) == 2
+
+
 def test_handing_over_again_is_allowed_once_the_cooldown_has_passed(handover, monkeypatch):
     assert startup.take_over_elevated() is True
 

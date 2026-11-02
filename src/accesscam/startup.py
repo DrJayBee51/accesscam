@@ -14,6 +14,7 @@ did not stick.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import sys
 import time
@@ -346,7 +347,15 @@ def take_over_elevated(argv: Sequence[str] | None = None) -> bool:
     invited is both a surprise and, for someone driving the pointer with their
     head, unanswerable.
     """
-    if not supported() or _already_privileged():
+    if not supported():
+        return False
+    if _already_privileged():
+        # The handover worked, so stop guarding against one that did not.
+        # Left in place, the marker made the next 90 seconds of launches - quit
+        # and reopen, the commonest thing anyone does - come up unelevated
+        # behind a warning about a loop that never happened.
+        with contextlib.suppress(OSError):
+            _handoff_marker().unlink(missing_ok=True)
         return False
 
     argv = sys.argv[1:] if argv is None else argv
