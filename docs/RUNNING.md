@@ -94,9 +94,11 @@ cd <wherever you cloned it>
 .venv\Scripts\accesscam.exe --register-task
 ```
 
-That registers a scheduled task running with highest privileges at logon —
-equivalent to the command below, except that AccessCam composes it, so the
-task and the app can never disagree about what should be running:
+That registers a scheduled task running with highest privileges at logon. It is
+roughly the command below, but registered from XML (`startup.task_xml`) so it
+can also allow a second instance to start while an old one is still exiting,
+and keep running on battery. `schtasks /create /sc onlogon` cannot set either,
+and its defaults silently break the handover:
 
 ```powershell
 schtasks /create /tn AccessCam /rl highest /sc onlogon /f `

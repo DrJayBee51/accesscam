@@ -118,6 +118,39 @@ def test_unsupported_platforms_report_rather_than_pretend(monkeypatch):
     assert startup.disable().ok
 
 
+def test_the_task_starts_a_handover_copy_even_while_another_is_running(monkeypatch):
+    # IgnoreNew made `schtasks /run` report success and start nothing while an
+    # old copy was still on its way out - the handover quit into thin air.
+    xml = startup.task_xml()
+    assert "<MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>" in xml
+    assert "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>" in xml
+    assert "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>" in xml
+    assert "<RunLevel>HighestAvailable</RunLevel>" in xml
+
+
+def test_the_task_xml_reads_back_as_the_command_we_compare_against(tmp_path, monkeypatch):
+    spaced = tmp_path / "Program & Files" / "AccessCam.exe"
+    monkeypatch.setattr(sys, "executable", str(spaced))
+    xml = startup.task_xml()
+
+    # `schtasks /query /xml` hands the same escaping back, so this is what
+    # `registered_command` will be reading.
+    assert "&amp;" in xml
+    command = startup._between(xml, "<Command>", "</Command>")
+    arguments = startup._between(xml, "<Arguments>", "</Arguments>")
+    assert f"{command} {arguments}" == startup.executable()
+
+
+def test_the_process_ends_with_mains_exit_code(tmp_path):
+    # The entry point skips interpreter teardown with os._exit, so make sure
+    # the code still comes through.
+    script = (
+        "import sys, accesscam.app as a, accesscam.__main__ as m\na.main = lambda: 7\nm.main()\n"
+    )
+    result = subprocess.run([sys.executable, "-c", script], check=False, timeout=60)
+    assert result.returncode == 7
+
+
 def test_the_executable_path_is_absolute():
     assert Path(startup.executable().split('"')[1]).is_absolute()
 

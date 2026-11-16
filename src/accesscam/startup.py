@@ -17,10 +17,12 @@ from __future__ import annotations
 import contextlib
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from xml.sax.saxutils import escape, unescape
 
 from accesscam.log import log
 
@@ -54,8 +56,8 @@ CAMERA_WAIT_SECONDS = 60
 RELAUNCH_WAIT_SECONDS = 20
 
 
-def executable() -> str:
-    """The command the task should run.
+def _task_action() -> tuple[str, str]:
+    """The task's program (quoted) and its arguments.
 
     Prefers `pythonw.exe` over `python.exe` where both exist. `python.exe` is a
     console application, so Windows allocates a console window for it - which
@@ -65,11 +67,63 @@ def executable() -> str:
     flags = f"--ui --wait-for-camera {CAMERA_WAIT_SECONDS}"
     exe = Path(sys.executable)
     if exe.stem.lower() not in {"python", "pythonw"}:
-        return f'"{exe}" {flags}'
+        return f'"{exe}"', flags
 
     windowed = exe.with_name("pythonw.exe")
     interpreter = windowed if windowed.exists() else exe
-    return f'"{interpreter}" -m accesscam {flags}'
+    return f'"{interpreter}"', f"-m accesscam {flags}"
+
+
+def executable() -> str:
+    """The command the task should run, as `registered_command` reads it back."""
+    command, arguments = _task_action()
+    return f"{command} {arguments}"
+
+
+# Registered from XML because `schtasks /create /sc onlogon` cannot set what
+# matters here, and its defaults each broke a handover without saying so:
+#
+# - IgnoreNew: while any instance counts as running - including a copy that
+#   has logged its exit but not yet ended - `schtasks /run` reports success
+#   and starts nothing. The unelevated copy then quits, and nothing comes back.
+#   Parallel is safe: a second copy defers to the first through the
+#   single-instance claim, and waits for the camera.
+# - On battery the task refuses to start, and stops when the charger is pulled.
+# - A 72-hour execution limit, after which Windows ends someone's mouse.
+_TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>{run_level}</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{command}</Command>
+      <Arguments>{arguments}</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"""
+
+
+def task_xml(run_level: str = "HighestAvailable") -> str:
+    command, arguments = _task_action()
+    return _TASK_XML.format(
+        run_level=run_level, command=escape(command), arguments=escape(arguments)
+    )
 
 
 def registered_command() -> str | None:
@@ -100,7 +154,7 @@ def _between(text: str, opening: str, closing: str) -> str | None:
     end = text.find(closing, start)
     if end < 0:
         return None
-    return text[start + len(opening) : end].strip()
+    return unescape(text[start + len(opening) : end].strip())
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
@@ -152,21 +206,10 @@ def enable() -> Outcome:
     if not supported():
         return Outcome(False, "Starting at logon is only wired up for Windows so far.")
 
-    result = _run(
-        [
-            "schtasks",
-            "/create",
-            "/tn",
-            TASK_NAME,
-            "/tr",
-            executable(),
-            "/sc",
-            "onlogon",
-            "/rl",
-            "highest",
-            "/f",
-        ]
-    )
+    with tempfile.TemporaryDirectory() as folder:
+        definition = Path(folder) / "AccessCam.xml"
+        definition.write_text(task_xml(), encoding="utf-16")
+        result = _run(["schtasks", "/create", "/tn", TASK_NAME, "/xml", str(definition), "/f"])
     if result.returncode == 0:
         return Outcome(True)
 
@@ -293,7 +336,9 @@ def _handed_over_recently() -> bool:
         age = time.time() - _handoff_marker().stat().st_mtime
     except OSError:
         return False
-    return 0 <= age < HANDOFF_COOLDOWN_SECONDS
+    # A file touched a moment ago can read a few milliseconds in the future
+    # (about one time in ten here), so a small negative age still counts.
+    return -1 <= age < HANDOFF_COOLDOWN_SECONDS
 
 
 def _record_handover() -> None:
